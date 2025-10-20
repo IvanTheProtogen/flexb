@@ -1,34 +1,32 @@
 # Installation 
 
-You just download `flexb.py` and put it inside the directory where other .py files can access.
+You just download `flexb.lua` and place it in the directory your script will access through.
+
+For Roblox, right-click ReplicatedFirst in the Explorer tab, select Insert From File and select `flexb.lua`.
 
 # Example use 
 
-As seen in `flexb_exampleuse.py`...
+```lua
+local nn = require("flexb")
 
-```python
-import flexb
-import random
+local mynn = nn.new({
+	{
+		nn.neuron.new("relu","relu",{0.7,0.3},0.1),
+		nn.neuron.new("relu","relu",{1.2,0.7},0.2)
+	},
+	{
+		nn.neuron.new("relu","relu",{0.9,1.1},0.3)
+	}
+})
 
-nn = flexb.network([
-    [
-        flexb.neuron(flexb.funcs.swish, flexb.funcs.swishDeriv, [1,-1], 0),
-        flexb.neuron(flexb.funcs.swish, flexb.funcs.swishDeriv, [1,-1], 0)
-    ],
-    [
-        flexb.neuron(flexb.funcs.swish, flexb.funcs.swishDeriv, [1,-1], 0)
-    ]
-])
+for _=1,1000 do
+	local a,b = math.random(1,10),math.random(1,10)
+	local x = a+b
+	local lout,lsum = mynn:forward({a,b})
+	local changes = mynn:backward({a,b},lout,lsum,{x})
+	mynn:update(changes)
+end
 
-xyz = 0
-while xyz <= 100000:
-    a = random.randint(0,10)
-    b = random.randint(0,10)
-    x = a-b
-    if x >= 0:
-        nn.forward([a,b])
-        nn.backward([x],0.006)
-        xyz += 1
-
-print(nn.forward([6,2]))
+local lout = mynn:forward({5,3})
+print(lout[#lout][1]-8)
 ```
