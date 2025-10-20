@@ -40,8 +40,8 @@ end
 neuron.builtin = builtin
 
 function neuron.new(activ,deriv,weight,bias)
-	activ = (type(activ)=="string" and builtin[activ]) or (type(activ)=="function" and activ) or error("expected function, got ",2)
 	deriv = (type(deriv)=="string" and builtin[deriv.."Deriv"]) or (type(deriv)=="function" and deriv) or (type(activ)=="string" and builtin[activ.."Deriv"]) or error("expected function, got "..type(deriv),2)
+	activ = (type(activ)=="string" and builtin[activ]) or (type(activ)=="function" and activ) or error("expected function, got ",2)
 	assert(type(weight)=="table" or type(weight)=="number","expected table or number, got "..type(weight))
 	if bias ~= nil then
 		assert(type(bias)=="number","expected number, got "..type(bias))
@@ -82,7 +82,7 @@ function neuron.backward(self,output,sum,target)
 end
 
 function neuron.update(self,input,error,power)
-	power = power or (type(power)=="number" and 0.01) or error("expected number, got "..type(power))
+	power = (power==nil and 0.004) or (type(power)=="number" and power) or error("expected number, got "..type(power))
 	for i=1,#input do
 		self.weight[i] = self.weight[i] + power * error * input[i]
 	end
@@ -115,7 +115,7 @@ function nn.forward(layers,input)
 end
 
 function nn.backward(layers,input,lout,lsum,target,power)
-	power = power or 0.01
+	power = (power==nil and 0.004) or (type(power)=="number" and power) or error("expected number, got "..type(power))
 	
 	local errors = {}
 	local current_errors = {}
