@@ -19,7 +19,7 @@ local mynn = nn.new({
 	}
 })
 
-for _=1,1000 do
+for _=1,10000 do
 	local a,b = math.random(1,10),math.random(1,10)
 	local x = a+b
 	local lout,lsum = mynn:forward({a,b})
