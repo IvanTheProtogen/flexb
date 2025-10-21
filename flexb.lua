@@ -44,6 +44,11 @@ function neuron.new(activ,weight,bias)
 	obj.activ = activ
 	obj.weight = weight
 	obj.bias = bias
+	obj.velw = {}
+	for i=1,#weight do
+		obj.velw[i] = 0
+	end
+	obj.velb = 0
 	setmetatable(obj,neuron)
 	return obj
 end
@@ -72,12 +77,18 @@ function neuron.backward(self,output,sum,target)
 	return error
 end
 
-function neuron.update(self,input,error,power)
-	power = (power==nil and 0.004) or (type(power)=="number" and power) or error("expected number, got "..type(power))
-	for i=1,#input do
-		self.weight[i] = self.weight[i] + power * error * input[i]
+function neuron.update(self,input,error,power,momentum)
+	power,momentum = power or 0.004, momentum or 0.9
+	local old_velw,old_velb = {},self.velb
+	for i=1,#self.velw do
+		old_velw[i] = self.velw[i]
 	end
-	self.bias = self.bias + power * error
+	for i=1,#input do
+		self.velw[i] = momentum * self.velw[i] + power * error * input[i]
+		self.weight[i] = self.weight[i] - momentum * old_velw[i] + (1 + momentum) * self.velw[i]
+	end
+	self.velb = momentum * self.velb + power * error
+	self.bias = self.bias - momentum * old_velb + (1 + momentum) * self.velb
 end
 
 function nn.new(layers)
@@ -153,14 +164,20 @@ function nn.backward(layers,input,lout,lsum,target)
 	return changes
 end
 
-function nn.update(layers,changes,power)
-	power = (power==nil and 0.004) or (type(power)=="number" and power) or error("expected number, got "..type(power))
+function nn.update(layers,changes,power,momentum)
+	power,momentum = power or 0.004, momentum or 0.9
 	for neuron, update_data in pairs(changes) do
 		local weight_updates, bias_update = update_data[1], update_data[2]
-		for i = 1, #neuron.weight do
-			neuron.weight[i] = neuron.weight[i] + (weight_updates[i] * power)
+		local old_velw,old_velb = {},neuron.velb
+		for i=1,#neuron.velw do
+			old_velw[i] = neuron.velw[i]
 		end
-		neuron.bias = neuron.bias + (bias_update * power)
+		for i=1,#neuron.weight do
+			neuron.velw[i] = momentum * neuron.velw[i] + power * (weight_updates[i] or 0)
+			neuron.weight[i] = neuron.weight[i] - momentum * old_velw[i] + (1 + momentum) * neuron.velw[i]
+		end
+		neuron.velb = momentum * neuron.velb + power * bias_update
+		neuron.bias = neuron.bias - momentum * old_velb + (1 + momentum) * neuron.velb
 	end
 end
 
