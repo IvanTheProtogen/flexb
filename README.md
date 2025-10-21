@@ -11,11 +11,11 @@ local nn = require("flexb")
 
 local mynn = nn.new({
 	{
-		nn.neuron.new("relu",nil,2),
-		nn.neuron.new("relu",nil,2)
+		nn.neuron.new("relu",2),
+		nn.neuron.new("relu",2)
 	},
 	{
-		nn.neuron.new("relu",nil,2)
+		nn.neuron.new("relu",2)
 	}
 })
 
