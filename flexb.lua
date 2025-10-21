@@ -50,8 +50,9 @@ function neuron.new(activ,deriv,weight,bias)
 	end
 	if type(weight)=="number" then
 		local newweight = {}
-		for i=1,weight do
-			table.insert(newweight,math.random() * math.sqrt(1/weight))
+		local scale = math.sqrt(1/weight)
+		for i=1,weight do 
+			table.insert(newweight,(math.random() * 2 - 1) * scale)
 		end
 		weight = newweight
 	end
