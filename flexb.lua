@@ -46,7 +46,7 @@ function neuron.new(activ,deriv,weight,bias)
 	if bias ~= nil then
 		assert(type(bias)=="number","expected number, got "..type(bias))
 	else
-		bias = math.random()
+		bias = 0
 	end
 	if type(weight)=="number" then
 		local newweight = {}
