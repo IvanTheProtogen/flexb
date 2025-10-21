@@ -1,8 +1,12 @@
 --!native
 --!optimize 2
 
+local nn = {}
+nn.__index = nn
+
 local neuron = {}
 neuron.__index = neuron
+nn.neuron = neuron
 
 local builtin = {}
 function builtin.sigmoid(x)
@@ -18,29 +22,9 @@ function builtin.swish(x)
 	return x*(builtin.sigmoid(x))
 end
 builtin.tanh = math.tanh
-function builtin.sigmoidDeriv(x)
-	local s = builtin.sigmoid(x)
-	return s*(1-s)
-end
-function builtin.reluDeriv(x)
-	return x >= 0 and 1 or 0
-end
-function builtin.linearDeriv(x)
-	return 1
-end
-function builtin.swishDeriv(x)
-	local s = builtin.sigmoid(x)
-	local d = s*(1-s)
-	return s+(x*d)
-end
-function builtin.tanhDeriv(x)
-	local t = math.tanh(x)
-	return 1 - t * t
-end
-neuron.builtin = builtin
+nn.builtin = builtin
 
-function neuron.new(activ,deriv,weight,bias)
-	deriv = (type(deriv)=="string" and builtin[deriv.."Deriv"]) or (type(deriv)=="function" and deriv) or (type(activ)=="string" and builtin[activ.."Deriv"]) or error("expected function, got "..type(deriv),2)
+function neuron.new(activ,weight,bias)
 	activ = (type(activ)=="string" and builtin[activ]) or (type(activ)=="function" and activ) or error("expected function, got ",2)
 	assert(type(weight)=="table" or type(weight)=="number","expected table or number, got "..type(weight))
 	if bias ~= nil then
@@ -58,7 +42,6 @@ function neuron.new(activ,deriv,weight,bias)
 	end
 	local obj = {}
 	obj.activ = activ
-	obj.deriv = deriv
 	obj.weight = weight
 	obj.bias = bias
 	setmetatable(obj,neuron)
@@ -75,10 +58,17 @@ function neuron.forward(self,input)
 	return self.activ(sum),sum
 end
 
+function nn.deriv(f,x)
+	local e = 0.0001+(x*0.000000000000001)
+	local a = f(x+e)
+	local b = f(x-e)
+	return (a-b)/(2*e)
+end
+
 function neuron.backward(self,output,sum,target)
 	assert(type(output)=="number","expected number, got "..type(output))
 	assert(type(target)=="number","expected number, got "..type(target))
-	local error = (target - output) * self.deriv(sum)
+	local error = (target - output) * nn.deriv(self.activ,sum)
 	return error
 end
 
@@ -89,10 +79,6 @@ function neuron.update(self,input,error,power)
 	end
 	self.bias = self.bias + power * error
 end
-
-local nn = {}
-nn.__index = nn
-nn.neuron = neuron
 
 function nn.new(layers)
 	setmetatable(layers,nn)
@@ -115,9 +101,7 @@ function nn.forward(layers,input)
 	return outputs, sums
 end
 
-function nn.backward(layers,input,lout,lsum,target,power)
-	power = (power==nil and 0.004) or (type(power)=="number" and power) or error("expected number, got "..type(power))
-	
+function nn.backward(layers,input,lout,lsum,target)
 	local errors = {}
 	local current_errors = {}
 	
@@ -137,7 +121,7 @@ function nn.backward(layers,input,lout,lsum,target,power)
 		
 		for j, neuron in ipairs(layer) do
 			local sum = lsum[i][j]
-			local derivative = neuron.deriv(sum)
+			local derivative = nn.deriv(neuron.activ,sum)
 			local error_sum = 0
 			for k, next_neuron in ipairs(next_layer) do
 				error_sum = error_sum + errors[i + 1][k] * next_neuron.weight[j]
@@ -159,23 +143,24 @@ function nn.backward(layers,input,lout,lsum,target,power)
 				changes[neuron] = {{}, 0}
 			end
 			for k = 1, #layer_input do
-				local weight_update = power * error * layer_input[k]
+				local weight_update = error * layer_input[k]
 				table.insert(changes[neuron][1], weight_update)
 			end
-			changes[neuron][2] = power * error
+			changes[neuron][2] = error
 		end
 	end
 	
 	return changes
 end
 
-function nn.update(layers,changes)
+function nn.update(layers,changes,power)
+	power = (power==nil and 0.004) or (type(power)=="number" and power) or error("expected number, got "..type(power))
 	for neuron, update_data in pairs(changes) do
 		local weight_updates, bias_update = update_data[1], update_data[2]
 		for i = 1, #neuron.weight do
-			neuron.weight[i] = neuron.weight[i] + weight_updates[i]
+			neuron.weight[i] = neuron.weight[i] + (weight_updates[i] * power)
 		end
-		neuron.bias = neuron.bias + bias_update
+		neuron.bias = neuron.bias + (bias_update * power)
 	end
 end
 
