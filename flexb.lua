@@ -107,6 +107,14 @@ function nn.new(layers)
 	return layers
 end
 
+function nn.layer(activ,w,c)
+	local t = {}
+	for i=1,c do
+		table.insert(t,neuron.new(activ,w))
+	end
+	return t
+end
+
 function nn.forward(layers,input)
 	local outputs,sums = {input},{}
 	for i = 1, #layers do
