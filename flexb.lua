@@ -40,8 +40,8 @@ function neuron.new(activ,weight,bias)
 		end
 		weight = newweight
 	else 
+		local scale = math.sqrt(1/#weight)
 		for k,v in next,weight do 
-			local scale = math.sqrt(1/#weight)
 			if v==true then 
 				weight[k] = math.random() * scale
 			elseif v==false then 
