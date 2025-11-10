@@ -25,7 +25,7 @@ builtin.tanh = math.tanh
 nn.builtin = builtin
 
 function neuron.new(activ,weight,bias)
-	activ = (type(activ)=="string" and builtin[activ]) or (type(activ)=="function" and activ) or error("expected function, got ",2)
+	activ = (type(activ)=="string" and builtin[activ]) or (type(activ)=="function" and activ) or error("expected function, got "..type(activ),2)
 	assert(type(weight)=="table" or type(weight)=="number","expected table or number, got "..type(weight))
 	if bias ~= nil then
 		assert(type(bias)=="number","expected number, got "..type(bias))
@@ -39,6 +39,17 @@ function neuron.new(activ,weight,bias)
 			table.insert(newweight,(math.random() * 2 - 1) * scale)
 		end
 		weight = newweight
+	else 
+		for k,v in next,weight do 
+			local scale = math.sqrt(1/#weight)
+			if v==true then 
+				weight[k] = math.random() * scale
+			elseif v==false then 
+				weight[k] = -math.random() * scale
+			elseif v=="" then 
+				weight[k] = (math.random() * 2 - 1) * scale
+			end
+		end
 	end
 	local obj = {}
 	obj.activ = activ
@@ -112,7 +123,8 @@ function nn.forward(layers,input)
 	return outputs, sums
 end
 
-function nn.backward(layers,input,lout,lsum,target)
+function nn.backward(layers,lout,lsum,target)
+	local input = lout[1]
 	local errors = {}
 	local current_errors = {}
 	
@@ -179,6 +191,30 @@ function nn.update(layers,changes,power,momentum)
 		neuron.velb = momentum * neuron.velb + power * bias_update
 		neuron.bias = neuron.bias - momentum * old_velb + (1 + momentum) * neuron.velb
 	end
+end
+
+function nn.softmax(t)
+	local r,sum,max = {},0,-math.huge
+	for k,v in next,t do
+		max = max < v and v or max
+	end
+	for k,v in next,t do
+		local v = math.exp(v - max)
+		r[k] = v
+		sum = sum + v
+	end
+	for k,v in next,r do
+		r[k] = v/sum
+	end
+	return r,sum
+end
+
+function nn.logit(t,sum)
+	local r,sum = {},sum or 1
+	for k,v in next,t do
+		r[k] = math.log(math.max(v*sum,1e-10))
+	end
+	return r
 end
 
 return nn
