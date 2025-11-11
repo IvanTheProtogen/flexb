@@ -65,11 +65,15 @@ function neuron.new(activ,weight,bias,mask)
 	obj.weight = weight
 	obj.bias = bias
 	obj.mask = mask
-	obj.velw = {}
+	obj.m_w = {}
+	obj.v_w = {} 
+	obj.m_b = 0
+	obj.v_b = 0
+	obj.t = 0
 	for i=1,#weight do
-		obj.velw[i] = 0
+		obj.m_w[i] = 0
+		obj.v_w[i] = 0
 	end
-	obj.velb = 0
 	setmetatable(obj,neuron)
 	return obj
 end
@@ -98,21 +102,32 @@ function neuron.backward(self,output,sum,target)
 	return error
 end
 
-function neuron.update(self,input,error,power,momentum,ignoremask)
-	power,momentum = power or 0.004, momentum or 0.9
-	local mask,old_velw,old_velb = self.mask,{},self.velb
+function neuron.update(self,input,error,power,beta1,beta2,epsilon,ignoremask)
+	power = power or 0.001
+	beta1 = beta1 or 0.9
+	beta2 = beta2 or 0.999
+	epsilon = epsilon or 1e-8
+	local mask = self.mask
+	self.t = self.t + 1
 	for i=1,#input do
 		local maskitem = mask and mask[1][i] or 1
 		if maskitem ~= 0 then 
-			old_velw[i] = self.velw[i]
-			self.velw[i] = momentum * self.velw[i] + power * error * input[i] * maskitem
-			self.weight[i] = self.weight[i] - momentum * old_velw[i] + (1 + momentum) * self.velw[i]
+			local grad = error * input[i] * maskitem
+			self.m_w[i] = beta1 * self.m_w[i] + (1 - beta1) * grad
+			self.v_w[i] = beta2 * self.v_w[i] + (1 - beta2) * grad * grad
+			local m_hat = self.m_w[i] / (1 - beta1^self.t)
+			local v_hat = self.v_w[i] / (1 - beta2^self.t)
+			self.weight[i] = self.weight[i] + power * m_hat / (math.sqrt(v_hat) + epsilon)
 		end
 	end
 	local maskitem = mask and mask[2] or 1
 	if maskitem ~= 0 then
-		self.velb = momentum * self.velb + power * error * maskitem
-		self.bias = self.bias - momentum * old_velb + (1 + momentum) * self.velb
+		local grad = error * maskitem
+		self.m_b = beta1 * self.m_b + (1 - beta1) * grad
+		self.v_b = beta2 * self.v_b + (1 - beta2) * grad * grad
+		local m_hat = self.m_b / (1 - beta1^self.t)
+		local v_hat = self.v_b / (1 - beta2^self.t)
+		self.bias = self.bias + power * m_hat / (math.sqrt(v_hat) + epsilon)
 	end
 end
 
@@ -185,37 +200,18 @@ function nn.backward(layers,lout,lsum,target)
 		for j, neuron in ipairs(layer) do
 			local error = errors[i][j]
 			if not changes[neuron] then
-				changes[neuron] = {{}, 0}
+				changes[neuron] = {layer_input, error}
 			end
-			for k = 1, #layer_input do
-				local weight_update = error * layer_input[k]
-				table.insert(changes[neuron][1], weight_update)
-			end
-			changes[neuron][2] = error
 		end
 	end
 	
 	return changes
 end
 
-function nn.update(layers,changes,power,momentum,ignoremask)
-	power,momentum = power or 0.004, momentum or 0.9
+function nn.update(layers,changes,power,beta1,beta2,epsilon,ignoremask)
 	for neuron, update_data in pairs(changes) do
-		local weight_updates, bias_update = update_data[1], update_data[2]
-		local mask,old_velw,old_velb = neuron.mask,{},neuron.velb
-		for i=1,#neuron.weight do 
-			local maskitem = mask and mask[1][i] or 1
-			if maskitem ~= 0 then
-				old_velw[i] = neuron.velw[i]
-				neuron.velw[i] = momentum * neuron.velw[i] + power * (weight_updates[i] or 0) * maskitem
-				neuron.weight[i] = neuron.weight[i] - momentum * old_velw[i] + (1 + momentum) * neuron.velw[i]
-			end
-		end
-		local maskitem = mask and mask[2] or 1
-		if maskitem ~= 0 then
-			neuron.velb = momentum * neuron.velb + power * bias_update * maskitem
-			neuron.bias = neuron.bias - momentum * old_velb + (1 + momentum) * neuron.velb
-		end
+		local input,error = update_data[1], update_data[2]
+		neuron:update(input,error,power,beta1,beta2,epsilon,ignoremask)
 	end
 end
 
