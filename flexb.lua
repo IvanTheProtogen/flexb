@@ -102,14 +102,16 @@ function neuron.update(self,input,error,power,momentum,ignoremask)
 	power,momentum = power or 0.004, momentum or 0.9
 	local mask,old_velw,old_velb = self.mask,{},self.velb
 	for i=1,#input do
-		if (mask and not ignoremask) and mask[1][i] ~= 0 then 
+		local maskitem = mask and mask[1][i] or 1
+		if maskitem ~= 0 then 
 			old_velw[i] = self.velw[i]
-			self.velw[i] = momentum * self.velw[i] + power * error * input[i] * mask[1][i]
+			self.velw[i] = momentum * self.velw[i] + power * error * input[i] * maskitem
 			self.weight[i] = self.weight[i] - momentum * old_velw[i] + (1 + momentum) * self.velw[i]
 		end
 	end
-	if (mask and not ignoremask) and mask[2] ~= 0 then
-		self.velb = momentum * self.velb + power * error
+	local maskitem = mask and mask[2] or 1
+	if maskitem ~= 0 then
+		self.velb = momentum * self.velb + power * error * maskitem
 		self.bias = self.bias - momentum * old_velb + (1 + momentum) * self.velb
 	end
 end
@@ -201,15 +203,17 @@ function nn.update(layers,changes,power,momentum,ignoremask)
 	for neuron, update_data in pairs(changes) do
 		local weight_updates, bias_update = update_data[1], update_data[2]
 		local mask,old_velw,old_velb = neuron.mask,{},neuron.velb
-		for i=1,#neuron.weight do
-			if (mask and not ignoremask) and mask[1][i] ~= 0 then
+		for i=1,#neuron.weight do 
+			local maskitem = mask and mask[1][i] or 1
+			if maskitem ~= 0 then
 				old_velw[i] = neuron.velw[i]
-				neuron.velw[i] = momentum * neuron.velw[i] + power * (weight_updates[i] or 0)
+				neuron.velw[i] = momentum * neuron.velw[i] + power * (weight_updates[i] or 0) * maskitem
 				neuron.weight[i] = neuron.weight[i] - momentum * old_velw[i] + (1 + momentum) * neuron.velw[i]
 			end
 		end
-		if (mask and not ignoremask) and mask[2] ~= 0 then
-			neuron.velb = momentum * neuron.velb + power * bias_update
+		local maskitem = mask and mask[2] or 1
+		if maskitem ~= 0 then
+			neuron.velb = momentum * neuron.velb + power * bias_update * maskitem
 			neuron.bias = neuron.bias - momentum * old_velb + (1 + momentum) * neuron.velb
 		end
 	end
