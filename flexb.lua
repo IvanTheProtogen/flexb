@@ -76,6 +76,15 @@ function neuron.new(activ,weight,bias,mask)
 	obj.m_b = 0
 	obj.v_b = 0
 	obj.t = 0
+	obj.mean = 0
+	obj.std = 1
+	obj.count = 0
+	obj.gamma = 1
+	obj.beta = 0
+	obj.m_gamma = 0
+	obj.v_gamma = 0
+	obj.m_beta = 0
+	obj.v_beta = 0
 	for i=1,#weight do
 		obj.m_w[i] = 0
 		obj.v_w[i] = 0
@@ -91,7 +100,9 @@ function neuron.forward(self,input)
 	for i=1,#input do
 		sum = sum + input[i]*self.weight[i]
 	end
-	return self.activ(sum),sum
+	local normalized = (sum - self.mean) / (self.std + 1e-8)
+	local scaled = self.gamma * normalized + self.beta
+	return self.activ(scaled), scaled
 end
 
 function nn.deriv(f,x)
@@ -104,7 +115,9 @@ end
 function neuron.backward(self,output,sum,target)
 	assert(type(output)=="number","expected number, got "..type(output))
 	assert(type(target)=="number","expected number, got "..type(target))
-	local error = (target - output) * nn.deriv(self.activ,sum)
+	local d_activation = nn.deriv(self.activ, sum)
+	local error = (target - output) * d_activation * self.gamma / (self.std + 1e-8)
+	
 	return error
 end
 
@@ -115,6 +128,34 @@ function neuron.update(self,input,error,power,beta1,beta2,epsilon,ignoremask)
 	epsilon = epsilon or 1e-8
 	local mask = self.mask
 	self.t = self.t + 1
+	local current_sum = self.bias
+	for i=1,#input do
+		current_sum = current_sum + input[i] * self.weight[i]
+	end
+	if self.count > 0 then
+		self.count = self.count + 1
+		local alpha = 1.0 / self.count
+		self.mean = (1 - alpha) * self.mean + alpha * current_sum
+		local diff = current_sum - self.mean
+		self.std = math.sqrt((1 - alpha) * (self.std * self.std) + alpha * (diff * diff))
+	else
+		self.mean = current_sum
+		self.std = 1.0
+		self.count = 1
+	end
+	local normalized = (current_sum - self.mean) / (self.std + 1e-8)
+	local norm_grad_gamma = error * normalized
+	local norm_grad_beta = error
+	self.m_gamma = beta1 * self.m_gamma + (1 - beta1) * norm_grad_gamma
+	self.v_gamma = beta2 * self.v_gamma + (1 - beta2) * norm_grad_gamma * norm_grad_gamma
+	local m_hat_gamma = self.m_gamma / (1 - beta1^self.t)
+	local v_hat_gamma = self.v_gamma / (1 - beta2^self.t)
+	self.gamma = self.gamma + power * m_hat_gamma / (math.sqrt(v_hat_gamma) + epsilon)
+	self.m_beta = beta1 * self.m_beta + (1 - beta1) * norm_grad_beta
+	self.v_beta = beta2 * self.v_beta + (1 - beta2) * norm_grad_beta * norm_grad_beta
+	local m_hat_beta = self.m_beta / (1 - beta1^self.t)
+	local v_hat_beta = self.v_beta / (1 - beta2^self.t)
+	self.beta = self.beta + power * m_hat_beta / (math.sqrt(v_hat_beta) + epsilon)
 	for i=1,#input do
 		local maskitem = mask and mask[1][i] or 1
 		if maskitem ~= 0 then 
@@ -170,7 +211,6 @@ function nn.backward(layers,lout,lsum,target)
 	local input = lout[1]
 	local errors = {}
 	local current_errors = {}
-	
 	local output_layer = layers[#layers]
 	for j, neuron in ipairs(output_layer) do
 		local output = lout[#lout][j]
@@ -179,12 +219,10 @@ function nn.backward(layers,lout,lsum,target)
 		table.insert(current_errors, error)
 	end
 	errors[#layers] = current_errors
-	
 	for i = #layers - 1, 1, -1 do
 		current_errors = {}
 		local layer = layers[i]
 		local next_layer = layers[i + 1]
-		
 		for j, neuron in ipairs(layer) do
 			local sum = lsum[i][j]
 			local derivative = nn.deriv(neuron.activ,sum)
@@ -192,15 +230,12 @@ function nn.backward(layers,lout,lsum,target)
 			for k, next_neuron in ipairs(next_layer) do
 				error_sum = error_sum + errors[i + 1][k] * next_neuron.weight[j]
 			end
-			
 			local error = error_sum * derivative
 			table.insert(current_errors, error)
 		end
 		errors[i] = current_errors
 	end
-	
 	local changes = {}
-	
 	for i, layer in ipairs(layers) do
 		local layer_input = lout[i]
 		for j, neuron in ipairs(layer) do
@@ -210,7 +245,6 @@ function nn.backward(layers,lout,lsum,target)
 			end
 		end
 	end
-	
 	return changes
 end
 
