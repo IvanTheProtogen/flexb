@@ -25,7 +25,9 @@ end
 function builtin.swish(x)
 	return x*(builtin.sigmoid(x))
 end
-builtin.tanh = math.tanh
+builtin.tanh = math.tanh or function(x)
+	return (builtin.sigmoid(x)*2)-1
+end
 nn.builtin = builtin
 
 function neuron.new(activ,weight,bias,mask)
