@@ -39,7 +39,7 @@ function neuron.new(activ,weight,bias,mask)
 	if mask ~= nil then 
 		assert(type(mask)=="table","expected table, got "..type(mask))
 		assert(type(mask[1])=="table","expected table, got "..type(mask[1]))
-		assert(type(mask[2])=="boolean","expected boolean, got "..type(mask[2]))
+		assert(type(mask[2])=="number","expected number, got "..type(mask[2]))
 	end
 	if type(weight)=="number" then
 		local newweight = {}
@@ -102,13 +102,13 @@ function neuron.update(self,input,error,power,momentum,ignoremask)
 	power,momentum = power or 0.004, momentum or 0.9
 	local mask,old_velw,old_velb = self.mask,{},self.velb
 	for i=1,#input do
-		if (not mask or mask[1][i]) and not ignoremask then 
+		if (mask and not ignoremask) and mask[1][i] ~= 0 then 
 			old_velw[i] = self.velw[i]
-			self.velw[i] = momentum * self.velw[i] + power * error * input[i]
+			self.velw[i] = momentum * self.velw[i] + power * error * input[i] * mask[1][i]
 			self.weight[i] = self.weight[i] - momentum * old_velw[i] + (1 + momentum) * self.velw[i]
 		end
 	end
-	if (not mask or mask[2]) and not ignoremask then
+	if (mask and not ignoremask) and mask[2] ~= 0 then
 		self.velb = momentum * self.velb + power * error
 		self.bias = self.bias - momentum * old_velb + (1 + momentum) * self.velb
 	end
@@ -202,13 +202,13 @@ function nn.update(layers,changes,power,momentum,ignoremask)
 		local weight_updates, bias_update = update_data[1], update_data[2]
 		local mask,old_velw,old_velb = neuron.mask,{},neuron.velb
 		for i=1,#neuron.weight do
-			if (not mask or mask[1][i]) and not ignoremask then
+			if (mask and not ignoremask) and mask[1][i] ~= 0 then
 				old_velw[i] = neuron.velw[i]
 				neuron.velw[i] = momentum * neuron.velw[i] + power * (weight_updates[i] or 0)
 				neuron.weight[i] = neuron.weight[i] - momentum * old_velw[i] + (1 + momentum) * neuron.velw[i]
 			end
 		end
-		if (not mask or mask[2]) and not ignoremask then
+		if (mask and not ignoremask) and mask[2] ~= 0 then
 			neuron.velb = momentum * neuron.velb + power * bias_update
 			neuron.bias = neuron.bias - momentum * old_velb + (1 + momentum) * neuron.velb
 		end
