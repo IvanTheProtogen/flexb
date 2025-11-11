@@ -1,3 +1,6 @@
+> [!IMPORTANT]
+> FlexB is still work-in-progress, please don't expect stability. Newer versions *will* break compatibility.
+
 # Installation 
 
 You just download `flexb.lua` and place it in the directory your script will access through.
