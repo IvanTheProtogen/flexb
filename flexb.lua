@@ -208,7 +208,7 @@ function nn.update(layers,changes,power,momentum,ignoremask)
 				neuron.weight[i] = neuron.weight[i] - momentum * old_velw[i] + (1 + momentum) * neuron.velw[i]
 			end
 		end
-		if (not mask or mask[1][i]) and not ignoremask then
+		if (not mask or mask[2]) and not ignoremask then
 			neuron.velb = momentum * neuron.velb + power * bias_update
 			neuron.bias = neuron.bias - momentum * old_velb + (1 + momentum) * neuron.velb
 		end
