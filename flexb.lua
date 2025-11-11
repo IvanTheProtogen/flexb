@@ -28,6 +28,10 @@ end
 builtin.tanh = math.tanh or function(x)
 	return (builtin.sigmoid(x)*2)-1
 end
+function builtin.diosh(x) -- discovered by me
+	local t = builtin.tanh(x)
+	return x - t * (1 - t * t)
+end
 nn.builtin = builtin
 
 function neuron.new(activ,weight,bias,mask)
