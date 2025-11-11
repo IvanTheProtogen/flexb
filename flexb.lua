@@ -1,3 +1,7 @@
+-- FlexB
+-- A neural network module for Lua
+-- https://github.com/IvanTheProtogen/flexb
+
 --!native
 --!optimize 2
 
@@ -24,13 +28,18 @@ end
 builtin.tanh = math.tanh
 nn.builtin = builtin
 
-function neuron.new(activ,weight,bias)
+function neuron.new(activ,weight,bias,mask)
 	activ = (type(activ)=="string" and builtin[activ]) or (type(activ)=="function" and activ) or error("expected function, got "..type(activ),2)
 	assert(type(weight)=="table" or type(weight)=="number","expected table or number, got "..type(weight))
 	if bias ~= nil then
 		assert(type(bias)=="number","expected number, got "..type(bias))
 	else
 		bias = 0
+	end
+	if mask ~= nil then 
+		assert(type(mask)=="table","expected table, got "..type(mask))
+		assert(type(mask[1])=="table","expected table, got "..type(mask[1]))
+		assert(type(mask[2])=="boolean","expected boolean, got "..type(mask[2]))
 	end
 	if type(weight)=="number" then
 		local newweight = {}
@@ -55,6 +64,7 @@ function neuron.new(activ,weight,bias)
 	obj.activ = activ
 	obj.weight = weight
 	obj.bias = bias
+	obj.mask = mask
 	obj.velw = {}
 	for i=1,#weight do
 		obj.velw[i] = 0
@@ -88,18 +98,20 @@ function neuron.backward(self,output,sum,target)
 	return error
 end
 
-function neuron.update(self,input,error,power,momentum)
+function neuron.update(self,input,error,power,momentum,ignoremask)
 	power,momentum = power or 0.004, momentum or 0.9
-	local old_velw,old_velb = {},self.velb
-	for i=1,#self.velw do
-		old_velw[i] = self.velw[i]
-	end
+	local mask,old_velw,old_velb = self.mask,{},self.velb
 	for i=1,#input do
-		self.velw[i] = momentum * self.velw[i] + power * error * input[i]
-		self.weight[i] = self.weight[i] - momentum * old_velw[i] + (1 + momentum) * self.velw[i]
+		if (not mask or mask[1][i]) and not ignoremask then 
+			old_velw[i] = self.velw[i]
+			self.velw[i] = momentum * self.velw[i] + power * error * input[i]
+			self.weight[i] = self.weight[i] - momentum * old_velw[i] + (1 + momentum) * self.velw[i]
+		end
 	end
-	self.velb = momentum * self.velb + power * error
-	self.bias = self.bias - momentum * old_velb + (1 + momentum) * self.velb
+	if (not mask or mask[2]) and not ignoremask then
+		self.velb = momentum * self.velb + power * error
+		self.bias = self.bias - momentum * old_velb + (1 + momentum) * self.velb
+	end
 end
 
 function nn.new(layers)
@@ -184,20 +196,22 @@ function nn.backward(layers,lout,lsum,target)
 	return changes
 end
 
-function nn.update(layers,changes,power,momentum)
+function nn.update(layers,changes,power,momentum,ignoremask)
 	power,momentum = power or 0.004, momentum or 0.9
 	for neuron, update_data in pairs(changes) do
 		local weight_updates, bias_update = update_data[1], update_data[2]
-		local old_velw,old_velb = {},neuron.velb
-		for i=1,#neuron.velw do
-			old_velw[i] = neuron.velw[i]
-		end
+		local mask,old_velw,old_velb = neuron.mask,{},neuron.velb
 		for i=1,#neuron.weight do
-			neuron.velw[i] = momentum * neuron.velw[i] + power * (weight_updates[i] or 0)
-			neuron.weight[i] = neuron.weight[i] - momentum * old_velw[i] + (1 + momentum) * neuron.velw[i]
+			if (not mask or mask[1][i]) and not ignoremask then
+				old_velw[i] = neuron.velw[i]
+				neuron.velw[i] = momentum * neuron.velw[i] + power * (weight_updates[i] or 0)
+				neuron.weight[i] = neuron.weight[i] - momentum * old_velw[i] + (1 + momentum) * neuron.velw[i]
+			end
 		end
-		neuron.velb = momentum * neuron.velb + power * bias_update
-		neuron.bias = neuron.bias - momentum * old_velb + (1 + momentum) * neuron.velb
+		if (not mask or mask[1][i]) and not ignoremask then
+			neuron.velb = momentum * neuron.velb + power * bias_update
+			neuron.bias = neuron.bias - momentum * old_velb + (1 + momentum) * neuron.velb
+		end
 	end
 end
 
