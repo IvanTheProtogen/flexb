@@ -51,7 +51,11 @@ function neuron.new(activ,weight,bias,mask)
 		local newweight = {}
 		local scale = math.sqrt(1/weight)
 		for i=1,weight do 
-			table.insert(newweight,(math.random() * 2 - 1) * scale)
+			if (mask and mask[1][i]) == 0 then 
+				table.insert(newweight,0)
+			else
+				table.insert(newweight,(math.random() * 2 - 1) * scale)
+			end
 		end
 		weight = newweight
 	else 
