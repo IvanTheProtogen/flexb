@@ -128,7 +128,9 @@ function neuron.update(self,input,error,power,beta1,beta2,epsilon,lambda)
 	epsilon = epsilon or 1e-8
 	lambda = lambda or 0.001
 	local mask = self.mask
-	self.t = self.t + 1
+	self.t = self.t + 1 
+	local decay = 1 - power * lambda
+	if decay < epsilon then decay = epsilon end 
 	local current_sum = self.bias
 	for i=1,#input do
 		current_sum = current_sum + input[i] * self.weight[i]
@@ -158,25 +160,19 @@ function neuron.update(self,input,error,power,beta1,beta2,epsilon,lambda)
 	local v_hat_beta = self.v_beta / (1 - beta2^self.t)
 	self.beta = self.beta + power * m_hat_beta / (math.sqrt(v_hat_beta) + epsilon)
 	for i=1,#input do
-		local maskitem = mask and mask[1][i] or 1
-		if maskitem ~= 0 then 
-			local grad = error * input[i] * maskitem + lambda * self.weight[i]
-			self.m_w[i] = beta1 * self.m_w[i] + (1 - beta1) * grad
-			self.v_w[i] = beta2 * self.v_w[i] + (1 - beta2) * grad * grad
-			local m_hat = self.m_w[i] / (1 - beta1^self.t)
-			local v_hat = self.v_w[i] / (1 - beta2^self.t)
-			self.weight[i] = self.weight[i] + power * m_hat / (math.sqrt(v_hat) + epsilon)
-		end
+		local grad = error * input[i] * (mask and mask[2] or 1)
+		self.m_w[i] = beta1 * self.m_w[i] + (1 - beta1) * grad
+		self.v_w[i] = beta2 * self.v_w[i] + (1 - beta2) * grad * grad
+		local m_hat = self.m_w[i] / (1 - beta1^self.t)
+		local v_hat = self.v_w[i] / (1 - beta2^self.t)
+		self.weight[i] = self.weight[i] * decay + power * m_hat / (math.sqrt(v_hat) + epsilon)
 	end
-	local maskitem = mask and mask[2] or 1
-	if maskitem ~= 0 then
-		local grad = error * maskitem 
-		self.m_b = beta1 * self.m_b + (1 - beta1) * grad
-		self.v_b = beta2 * self.v_b + (1 - beta2) * grad * grad
-		local m_hat = self.m_b / (1 - beta1^self.t)
-		local v_hat = self.v_b / (1 - beta2^self.t)
-		self.bias = self.bias + power * m_hat / (math.sqrt(v_hat) + epsilon)
-	end
+	local grad = error * (mask and mask[2] or 1)
+	self.m_b = beta1 * self.m_b + (1 - beta1) * grad
+	self.v_b = beta2 * self.v_b + (1 - beta2) * grad * grad
+	local m_hat = self.m_b / (1 - beta1^self.t)
+	local v_hat = self.v_b / (1 - beta2^self.t)
+	self.bias = self.bias * decay + power * m_hat / (math.sqrt(v_hat) + epsilon)
 end
 
 function nn.new(layers)
