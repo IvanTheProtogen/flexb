@@ -160,7 +160,7 @@ function neuron.update(self,input,error,power,beta1,beta2,epsilon,lambda)
 	local v_hat_beta = self.v_beta / (1 - beta2^self.t)
 	self.beta = self.beta + power * m_hat_beta / (math.sqrt(v_hat_beta) + epsilon)
 	for i=1,#input do
-		local grad = error * input[i] * (mask and mask[2] or 1)
+		local grad = error * input[i] * (mask and mask[1][i] or 1)
 		self.m_w[i] = beta1 * self.m_w[i] + (1 - beta1) * grad
 		self.v_w[i] = beta2 * self.v_w[i] + (1 - beta2) * grad * grad
 		local m_hat = self.m_w[i] / (1 - beta1^self.t)
