@@ -121,11 +121,12 @@ function neuron.backward(self,output,sum,target)
 	return error
 end
 
-function neuron.update(self,input,error,power,beta1,beta2,epsilon,ignoremask)
+function neuron.update(self,input,error,power,beta1,beta2,epsilon,lambda)
 	power = power or 0.001
 	beta1 = beta1 or 0.9
 	beta2 = beta2 or 0.999
 	epsilon = epsilon or 1e-8
+	lambda = lambda or 0.001
 	local mask = self.mask
 	self.t = self.t + 1
 	local current_sum = self.bias
@@ -159,7 +160,7 @@ function neuron.update(self,input,error,power,beta1,beta2,epsilon,ignoremask)
 	for i=1,#input do
 		local maskitem = mask and mask[1][i] or 1
 		if maskitem ~= 0 then 
-			local grad = error * input[i] * maskitem
+			local grad = error * input[i] * maskitem + lambda * self.weight[i]
 			self.m_w[i] = beta1 * self.m_w[i] + (1 - beta1) * grad
 			self.v_w[i] = beta2 * self.v_w[i] + (1 - beta2) * grad * grad
 			local m_hat = self.m_w[i] / (1 - beta1^self.t)
@@ -169,7 +170,7 @@ function neuron.update(self,input,error,power,beta1,beta2,epsilon,ignoremask)
 	end
 	local maskitem = mask and mask[2] or 1
 	if maskitem ~= 0 then
-		local grad = error * maskitem
+		local grad = error * maskitem 
 		self.m_b = beta1 * self.m_b + (1 - beta1) * grad
 		self.v_b = beta2 * self.v_b + (1 - beta2) * grad * grad
 		local m_hat = self.m_b / (1 - beta1^self.t)
@@ -215,8 +216,7 @@ function nn.backward(layers,lout,lsum,target)
 	for j, neuron in ipairs(output_layer) do
 		local output = lout[#lout][j]
 		local sum = lsum[#lsum][j]
-		local error = neuron:backward(output, sum, target[j] or target)
-		table.insert(current_errors, error)
+		table.insert(current_errors,neuron:backward(output,sum,target[j] or target))
 	end
 	errors[#layers] = current_errors
 	for i = #layers - 1, 1, -1 do
@@ -248,10 +248,9 @@ function nn.backward(layers,lout,lsum,target)
 	return changes
 end
 
-function nn.update(layers,changes,power,beta1,beta2,epsilon,ignoremask)
+function nn.update(layers,changes,power,beta1,beta2,epsilon,lambda)
 	for neuron, update_data in pairs(changes) do
-		local input,error = update_data[1], update_data[2]
-		neuron:update(input,error,power,beta1,beta2,epsilon,ignoremask)
+		neuron:update(update_data[1],update_data[2],power,beta1,beta2,epsilon,lambda)
 	end
 end
 
@@ -277,6 +276,14 @@ function nn.logit(t,sum)
 		r[k] = math.log(math.max(v*sum,1e-10))
 	end
 	return r
+end
+
+function nn.loss(pred,trg)
+	local loss,len = 0,#pred
+	for i=1,len do
+		loss = loss + (pred[i]-trg[i])^2
+	end
+	return loss/len
 end
 
 return nn
