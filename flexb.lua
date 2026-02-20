@@ -248,7 +248,7 @@ function nn.backward(layers,lout,lsum,target)
 	return changes
 end
 
-function nn.update(layers,changes,power,beta1,beta2,epsilon,lambda)
+function nn.update(changes,power,beta1,beta2,epsilon,lambda)
 	for neuron, update_data in pairs(changes) do
 		neuron:update(update_data[1],update_data[2],power,beta1,beta2,epsilon,lambda)
 	end
