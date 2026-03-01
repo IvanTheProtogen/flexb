@@ -22,7 +22,7 @@ function nn.linear(x)
 	return x
 end
 function nn.swish(x)
-	return x*(builtin.sigmoid(x))
+	return x*(nn.sigmoid(x))
 end
 nn.tanh = math.tanh or function(x)
 	return (2/(1+math.exp(-2*x)))-1
