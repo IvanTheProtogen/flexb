@@ -34,6 +34,7 @@ local ds = {
 	[{1,1}] = {0}
 }
 
+local clk = os.clock()
 for i=1,20000 do
 	for k,v in next,ds do
 		local lout1,lsum1 = ai1:forward(k)
@@ -43,6 +44,7 @@ for i=1,20000 do
 	end
 	print("Epochs left:",20001-i)
 end
+print("\nTime taken:",os.clock()-clk)
 
 local c1,c2 = 0,0
 for k,v in next,ds do
