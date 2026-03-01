@@ -12,41 +12,34 @@ local neuron = {}
 neuron.__index = neuron
 nn.neuron = neuron
 
-local builtin = {}
-function builtin.sigmoid(x)
+function nn.sigmoid(x)
 	return 1/(1+math.exp(-x))
 end
-function builtin.relu(x)
-	return math.max(0,x)
+function nn.relu(x)
+	return x>0 and x or 0
 end
-function builtin.linear(x)
+function nn.linear(x)
 	return x
 end
-function builtin.swish(x)
+function nn.swish(x)
 	return x*(builtin.sigmoid(x))
 end
-builtin.tanh = math.tanh or function(x)
-	return (builtin.sigmoid(x)*2)-1
+nn.tanh = math.tanh or function(x)
+	return (2/(1+math.exp(-2*x)))-1
 end
-function builtin.diosh(x) -- discovered by me
-	local t = builtin.tanh(x)
-	return x - t * (1 - t * t)
+function nn.hardsigmoid(x)
+	if x < 0 then return 0 end
+	if x > 1 then return 1 end
+	return x
 end
-nn.builtin = builtin
+function nn.hardtanh(x)
+	if x < -1 then return -1 end
+	if x > 1 then return 1 end
+	return x
+end
 
 function neuron.new(activ,weight,bias,mask)
-	activ = (type(activ)=="string" and builtin[activ]) or (type(activ)=="function" and activ) or error("expected function, got "..type(activ),2)
-	assert(type(weight)=="table" or type(weight)=="number","expected table or number, got "..type(weight))
-	if bias ~= nil then
-		assert(type(bias)=="number","expected number, got "..type(bias))
-	else
-		bias = 0
-	end
-	if mask ~= nil then 
-		assert(type(mask)=="table","expected table, got "..type(mask))
-		assert(type(mask[1])=="table","expected table, got "..type(mask[1]))
-		assert(type(mask[2])=="number","expected number, got "..type(mask[2]))
-	end
+	bias = bias or 0
 	if type(weight)=="number" then
 		local newweight = {}
 		local scale = math.sqrt(1/weight)
@@ -98,7 +91,6 @@ function neuron.new(activ,weight,bias,mask)
 end
 
 function neuron.forward(self,input)
-	assert(type(input)=="table","expected table, got "..type(input))
 	assert(#input == #self.weight,"invalid input size")
 	local sum = self.bias
 	for i=1,#input do
@@ -116,21 +108,16 @@ function nn.deriv(f,x)
 	return (a-b)/(2*e)
 end
 
-function neuron.backward(self,output,sum,target)
-	assert(type(output)=="number","expected number, got "..type(output))
-	assert(type(target)=="number","expected number, got "..type(target))
-	local d_activation = nn.deriv(self.activ, sum)
-	local error = (target - output) * d_activation * self.gamma / (self.std + 1e-8)
-	
-	return error
+function neuron.backward(self,output,sum,target,epsilon)
+	return (target - output) * nn.deriv(self.activ, sum) * self.gamma / (self.std + (epsilon or 1e-8))
 end
 
-function neuron.update(self,input,error,power,beta1,beta2,epsilon,lambda)
+function neuron.update(self,input,error,power,lambda,beta1,beta2,epsilon)
 	power = power or 0.001
+	lambda = lambda or 0.001
 	beta1 = beta1 or 0.9
 	beta2 = beta2 or 0.999
 	epsilon = epsilon or 1e-8
-	lambda = lambda or 0.001
 	local mask = self.mask
 	self.t = self.t + 1 
 	local decay = 1 - power * lambda
@@ -208,7 +195,7 @@ function nn.forward(layers,input)
 	return outputs, sums
 end
 
-function nn.backward(layers,lout,lsum,target)
+function nn.backward(layers,lout,lsum,target,epsilon)
 	local input = lout[1]
 	local errors = {}
 	local current_errors = {}
@@ -216,7 +203,7 @@ function nn.backward(layers,lout,lsum,target)
 	for j, neuron in ipairs(output_layer) do
 		local output = lout[#lout][j]
 		local sum = lsum[#lsum][j]
-		table.insert(current_errors,neuron:backward(output,sum,target[j] or target))
+		table.insert(current_errors,neuron:backward(output,sum,target[j] or target,epsilon))
 	end
 	errors[#layers] = current_errors
 	for i = #layers - 1, 1, -1 do
@@ -224,14 +211,11 @@ function nn.backward(layers,lout,lsum,target)
 		local layer = layers[i]
 		local next_layer = layers[i + 1]
 		for j, neuron in ipairs(layer) do
-			local sum = lsum[i][j]
-			local derivative = nn.deriv(neuron.activ,sum)
 			local error_sum = 0
 			for k, next_neuron in ipairs(next_layer) do
 				error_sum = error_sum + errors[i + 1][k] * next_neuron.weight[j]
 			end
-			local error = error_sum * derivative
-			table.insert(current_errors, error)
+			table.insert(current_errors, error_sum * nn.deriv(neuron.activ,lsum[i][j]) * neuron.gamma / (neuron.std + (epsilon or 1e-8)))
 		end
 		errors[i] = current_errors
 	end
@@ -248,9 +232,9 @@ function nn.backward(layers,lout,lsum,target)
 	return changes
 end
 
-function nn.update(changes,power,beta1,beta2,epsilon,lambda)
+function nn.update(changes,power,lambda,beta1,beta2,epsilon)
 	for neuron, update_data in pairs(changes) do
-		neuron:update(update_data[1],update_data[2],power,beta1,beta2,epsilon,lambda)
+		neuron:update(update_data[1],update_data[2],power,lambda,beta1,beta2,epsilon)
 	end
 end
 
