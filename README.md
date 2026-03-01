@@ -63,4 +63,12 @@ elseif c1 > c2 then
 else
 	print("\nAI #1 is as accurate as AI #2.")
 end
+
+print("\n#1.1.1.",ai1[1][1].weight[1],ai1[1][1].weight[2])
+print("#1.1.2.",ai1[1][2].weight[1],ai1[1][2].weight[2])
+print("#1.2.1.",ai1[2][1].weight[1],ai1[2][1].weight[2])
+
+print("\n#2.1.1.",ai2[1][1].weight[1],ai2[1][1].weight[2])
+print("#2.1.2.",ai2[1][2].weight[1],ai2[1][2].weight[2])
+print("#2.2.1.",ai2[2][1].weight[1],ai2[2][1].weight[2])
 ```
