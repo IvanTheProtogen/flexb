@@ -120,10 +120,10 @@ end
 
 function neuron.update(self,input,error,sum,power,lambda,beta1,beta2,timestep,epsilon)
 	power = power or 0.001
-	lambda = lambda or 0.001
+	lambda = lambda or (0.01/msqrt(#self.weight))
 	beta1 = beta1 or 0.9
 	beta2 = beta2 or 0.999
-	epsilon = epsilon or 1e-8
+	epsilon = epsilon or 1e-5
 	if not timestep then
 		local _temp = self.t + 1
 		self.t = _temp
