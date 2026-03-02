@@ -40,7 +40,7 @@ for i=1,20000 do
 		local lout1,lsum1 = ai1:forward(k)
 		local lout2,lsum2 = ai2:forward(k)
 		nn.update(ai1:backward(lout1,lsum1,v),0.01,0.001)
-		nn.update(ai2:backward(lout2,lsum2,v),0.015,0.001)
+		nn.update(ai2:backward(lout2,lsum2,v))
 	end
 	print("Epochs left:",20001-i)
 end
