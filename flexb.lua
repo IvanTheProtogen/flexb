@@ -125,8 +125,8 @@ function neuron.update(self,input,error,sum,power,lambda,beta1,beta2,timestep,ep
 	local adaptdiv = self.adaptdiv
 	power = (power or 0.001) * adapt
 	lambda = (lambda or 0.01) * adaptdiv
-	beta1 = (beta1 or 0.9); beta1 = beta1 - (0.09/beta1) * adaptdiv
-	beta2 = (beta2 or 0.999); beta2 = beta2 - (0.000999/beta2) * adaptdiv
+	beta1 = (beta1 or 0.9); beta1 = beta1 - beta1 * 0.111111111111111111 * adaptdiv
+	beta2 = (beta2 or 0.999); beta2 = beta2 - beta2 * 0.001001001001001001 * adaptdiv
 	epsilon = epsilon or 1e-5
 	if not timestep then
 		local _temp = self.t + 1
