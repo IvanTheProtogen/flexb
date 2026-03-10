@@ -6,7 +6,7 @@
 --!optimize 2
 
 local msqrt,mrandom,mlog,mexp,tinsert = math.sqrt, math.random, math.log, math.exp, table.insert
-local mmax,neginf = math.max, -math.huge
+local mmax,posinf,neginf,mabs,mmin = math.max, math.huge, -math.huge, math.abs, math.min
 
 local nn = {}
 nn.__index = nn
@@ -72,6 +72,7 @@ local function neuronnew(activ,weight,bias,mask)
 	obj.weight = weight
 	obj.adapt = msqrt(#weight)
 	obj.adaptdiv = 1/obj.adapt
+	obj.lasterror = 0
 	obj.bias = bias
 	obj.mask = mask
 	obj.m_w = {}
@@ -103,13 +104,13 @@ function neuron.forward(self,input,epsilon)
 	for i,inp in next,input do
 		sum = sum + inp*self.weight[i]
 	end
-	local normalized = (sum - self.mean) / (self.std + (epsilon or 1e-8))
+	local normalized = (sum - self.mean) / (self.std + (epsilon or 1e-8) * (mabs(sum)+1e-12))
 	local scaled = self.gamma * normalized + self.beta
 	return self.activ(scaled), scaled
 end
 
 local function nnderiv(f,x)
-	local e = 0.0001+(x*0.000000000000001)
+	local e = mabs(x) * 1e-8 + 1e-12
 	local a = f(x+e)
 	local b = f(x-e)
 	return (a-b)/(2*e)
@@ -117,67 +118,68 @@ end
 nn.deriv = nnderiv
 
 function neuron.backward(self,output,sum,target,epsilon)
-	return (target - output) * nnderiv(self.activ, sum) * self.gamma / (self.std + (epsilon or 1e-8))
+	return (target - output) * nnderiv(self.activ, sum) * self.gamma / (self.std + (epsilon or 1e-8) * (mabs(self.std)+1e-12))
 end
 
-function neuron.update(self,input,error,sum,power,lambda,beta1,beta2,timestep,epsilon)
+function neuron.update(self,input,error,sum,lr,momentum,lambda,beta1,beta2,timestep,epsilon)
 	local adapt = self.adapt
 	local adaptdiv = self.adaptdiv
-	power = (power or 0.001) * adapt
+	lr = (lr or 0.001) * adapt + (momentum or 0.004)*msqrt(mabs(self.lasterror - error))
 	lambda = (lambda or 0.01) * adaptdiv
 	beta1 = (beta1 or 0.9); beta1 = beta1 - beta1 * 0.111111111111111111 * adaptdiv
 	beta2 = (beta2 or 0.999); beta2 = beta2 - beta2 * 0.001001001001001001 * adaptdiv
-	epsilon = epsilon or 1e-5
+	self.lasterror = error
+	local eps = epsilon or 1e-8
 	if not timestep then
 		local _temp = self.t + 1
 		self.t = _temp
 		timestep = _temp
 	end
 	local mask = self.mask
-	local decay = 1 - power * lambda
-	if decay < epsilon then decay = epsilon end 
+	local decay = 1 - lr * lambda
+	if decay < 1e-12 then decay = 1e-12 end 
 	if self.count > 0 then
 		self.count = self.count + 1
-		local alpha = 1.0 / self.count
+		local alpha = 1 / self.count
 		self.mean = (1 - alpha) * self.mean + alpha * sum
 		local diff = sum - self.mean
 		self.std = msqrt((1 - alpha) * (self.std * self.std) + alpha * (diff * diff))
 	else
 		self.mean = sum
-		self.std = 1.0
+		self.std = 1
 		self.count = 1
 	end
 	local OneMinBeta1 = 1-beta1
 	local OneMinBeta2 = 1-beta2
 	local Beta1Powered = 1/(1 - beta1^timestep)
 	local Beta2Powered = 1/(1 - beta2^timestep)
-	local normalized = (sum - self.mean) / (self.std + epsilon)
+	local normalized = (sum - self.mean) / (self.std + eps * (mabs(error)+1e-12))
 	local norm_grad_gamma = error * normalized
 	local norm_grad_beta = error
 	self.m_gamma = beta1 * self.m_gamma + OneMinBeta1 * norm_grad_gamma
 	self.v_gamma = beta2 * self.v_gamma + OneMinBeta2 * norm_grad_gamma * norm_grad_gamma
 	local m_hat_gamma = self.m_gamma * Beta1Powered
 	local v_hat_gamma = self.v_gamma * Beta2Powered
-	self.gamma = self.gamma + power * m_hat_gamma / (msqrt(v_hat_gamma) + epsilon)
+	self.gamma = self.gamma + lr * m_hat_gamma / (msqrt(v_hat_gamma) + eps * (mabs(self.gamma)+1e-12))
 	self.m_beta = beta1 * self.m_beta + OneMinBeta1 * norm_grad_beta
 	self.v_beta = beta2 * self.v_beta + OneMinBeta2 * norm_grad_beta * norm_grad_beta
 	local m_hat_beta = self.m_beta * Beta1Powered
 	local v_hat_beta = self.v_beta * Beta2Powered
-	self.beta = self.beta + power * m_hat_beta / (msqrt(v_hat_beta) + epsilon)
+	self.beta = self.beta + lr * m_hat_beta / (msqrt(v_hat_beta) + eps * (mabs(self.beta)+1e-12))
 	for i,inp in next,input do
 		local grad = error * inp * (mask and mask[1][i] or 1)
 		self.m_w[i] = beta1 * self.m_w[i] + OneMinBeta1 * grad
 		self.v_w[i] = beta2 * self.v_w[i] + OneMinBeta2 * grad * grad
 		local m_hat = self.m_w[i] * Beta1Powered
 		local v_hat = self.v_w[i] * Beta2Powered
-		self.weight[i] = self.weight[i] * decay + power * m_hat / (msqrt(v_hat) + epsilon)
+		self.weight[i] = self.weight[i] * decay + lr * m_hat / (msqrt(v_hat) + eps * (mabs(self.weight[i])+1e-12))
 	end
 	local grad = error * (mask and mask[2] or 1)
 	self.m_b = beta1 * self.m_b + OneMinBeta1 * grad
 	self.v_b = beta2 * self.v_b + OneMinBeta2 * grad * grad
 	local m_hat = self.m_b * Beta1Powered
 	local v_hat = self.v_b * Beta2Powered
-	self.bias = self.bias * decay + power * m_hat / (msqrt(v_hat) + epsilon)
+	self.bias = self.bias * decay + lr * m_hat / (msqrt(v_hat) + eps * (mabs(self.bias)+1e-12))
 end
 
 function nn.new(layers)
@@ -294,10 +296,65 @@ function nn.argmax(t)
 	return idx,max
 end
 
-function nn.loss(pred,trg)
+nn.loss = {}
+
+function nn.loss.mse(pred,trg)
 	local loss,len = 0,#pred
 	for i=1,len do
 		loss = loss + (pred[i]-trg[i])^2
+	end
+	return loss/len
+end
+
+function nn.loss.mae(pred,trg)
+	local loss,len = 0,#pred
+	for i=1,len do
+		loss = loss + mabs(pred[i]-trg[i])
+	end
+	return loss/len
+end
+
+function nn.loss.huber(pred,trg,delta)
+	local loss,len,delta = 0,#pred,delta or 1
+	for i=1,len do
+		local diff = mabs(pred[i]-trg[i])
+		if diff <= delta then
+			loss = loss + 0.5 * diff^2
+		else
+			loss = loss + delta * diff - 0.5 * delta^2
+		end
+	end
+	return loss/len
+end
+
+function nn.loss.bce(pred,trg,eps)
+	local loss,len,eps = 0,#pred,eps or 1e-15
+	for i=1,len do
+		local p = mmax(mmin(pred[i],1-eps),eps)
+		loss = loss + trg[i] * mlog(p) + (1 - trg[i]) * mlog(1-p)
+	end
+	return -loss/len
+end
+
+function nn.loss.cce(pred,trg,eps)
+	-- please make sure to apply softmax to `pred`!
+	local loss,len,eps = 0,#pred,eps or 1e-15
+	for i=1,len do
+		local p = mmax(pred[i],eps)
+		loss = loss + trg[i] * mlog(p)
+	end
+	return -loss
+end
+
+function nn.loss.quantile(pred,trg,tau)
+	local loss,len,tau = 0,#pred,tau or 0.5
+	for i=1,len do
+		local diff = trg[i] - pred[i]
+		if diff >= 0 then
+			loss = loss + tau * diff
+		else
+			loss = loss + (tau-1) * diff
+		end
 	end
 	return loss/len
 end
