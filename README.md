@@ -14,18 +14,15 @@ For Roblox, right-click ReplicatedFirst in the Explorer tab, select Insert From 
 
 local nn = require("flexb")
 
-local function createAI()
-	return nn.new({
-		{
-			nn.neuron.new(nn.linear,{true,false}),
-			nn.neuron.new(nn.relu,{false,true}),
-		},
-		{
-			nn.neuron.new(nn.linear,{true,true})
-		}
-	})
-end
-local ai1,ai2 = createAI(),createAI()
+local ai = nn.new({
+	{
+		nn.neuron.new(nn.linear,{true,false}),
+		nn.neuron.new(nn.relu,{false,true}),
+	},
+	{
+		nn.neuron.new(nn.linear,{true,true})
+	}
+})
 
 local ds = {
 	[{0,0}] = {0},
@@ -37,10 +34,8 @@ local ds = {
 local clk = os.clock()
 for i=1,20000 do
 	for k,v in next,ds do
-		local lout1,lsum1 = ai1:forward(k)
-		local lout2,lsum2 = ai2:forward(k)
-		nn.update(ai1:backward(lout1,lsum1,v),0.01,0.001)
-		nn.update(ai2:backward(lout2,lsum2,v))
+		local lout,lsum = ai:forward(k)
+		nn.update(ai1:backward(lout,lsum,v))
 	end
 	print("Epochs left:",20001-i)
 end
@@ -48,27 +43,13 @@ print("\nTime taken:",os.clock()-clk)
 
 local c1,c2 = 0,0
 for k,v in next,ds do
-	local lout1 = ai1:forward(k)
-	local lout2 = ai2:forward(k)
-	c1 = c1 + nn.loss(lout1[#lout1],v)
-	c2 = c2 + nn.loss(lout2[#lout2],v)
+	local lout = ai:forward(k)
+	c1 = c1 + nn.loss.mse(lout[#lout],v)
 end
 
-print("\nAI #1's total inaccuracy:",c1)
-print("AI #2's total inaccuracy:",c2)
-if c1 < c2 then
-	print("\nAI #1 is more accurate than AI #2.")
-elseif c1 > c2 then
-	print("\nAI #2 is more accurate than AI #1.")
-else
-	print("\nAI #1 is as accurate as AI #2.")
-end
+print("\nAI's total inaccuracy:",c1)
 
-print("\n#1.1.1.",ai1[1][1].weight[1],ai1[1][1].weight[2],ai1[1][1].bias)
-print("#1.1.2.",ai1[1][2].weight[1],ai1[1][2].weight[2],ai1[1][2].bias)
-print("#1.2.1.",ai1[2][1].weight[1],ai1[2][1].weight[2],ai1[2][1].bias)
-
-print("\n#2.1.1.",ai2[1][1].weight[1],ai2[1][1].weight[2],ai2[1][1].bias)
-print("#2.1.2.",ai2[1][2].weight[1],ai2[1][2].weight[2],ai2[1][2].bias)
-print("#2.2.1.",ai2[2][1].weight[1],ai2[2][1].weight[2],ai2[2][1].bias)
+print("\n#1.1.",ai[1][1].weight[1],ai[1][1].weight[2],ai[1][1].bias)
+print("#1.2.",ai[1][2].weight[1],ai[1][2].weight[2],ai[1][2].bias)
+print("#2.1.",ai[2][1].weight[1],ai[2][1].weight[2],ai[2][1].bias)
 ```
