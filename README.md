@@ -35,7 +35,7 @@ local clk = os.clock()
 for i=1,20000 do
 	for k,v in next,ds do
 		local lout,lsum = ai:forward(k)
-		nn.update(ai1:backward(lout,lsum,v))
+		nn.update(ai:backward(lout,lsum,v))
 	end
 	print("Epochs left:",20001-i)
 end
