@@ -11,255 +11,231 @@ local mmax,posinf,neginf,mabs,mmin = math.max, math.huge, -math.huge, math.abs, 
 local nn = {}
 nn.__index = nn
 
-local neuron = {}
-neuron.__index = neuron
-nn.neuron = neuron
+function nn.new(sizes,activ)
+	local self = setmetatable({},nn)
+	self.sizes = sizes
+	self.nlayers = #sizes - 1
+	self.activ = activ
+	self.weight = {}
+	self.bias = {}
+	self.gamma = {}
+	self.beta = {}
+	self.mean = {}
+	self.std = {}
+	self.count = {}
+	self.m_w = {}
+	self.v_w = {}
+	self.m_b = {}
+	self.v_b = {}
+	self.m_gamma = {}
+	self.v_gamma = {}
+	self.m_beta = {}
+	self.v_beta = {}
+	self.t = 0
+	for i=1,self.nlayers do
+		local nin = sizes[i]
+		local nout = sizes[i+1]
+		local scale = msqrt(8/(nin+nout))
+		self.weight[i] = {}
+		self.bias[i] = {}
+		self.gamma[i] = {}
+		self.beta[i] = {}
+		self.mean[i] = {}
+		self.std[i] = {}
+		self.count[i] = 0
+		self.m_w[i] = {}
+		self.v_w[i] = {}
+		self.m_b[i] = {}
+		self.v_b[i] = {}
+		self.m_gamma[i] = {}
+		self.v_gamma[i] = {}
+		self.m_beta[i] = {}
+		self.v_beta[i] = {}
+		for j=1,nout do
+			self.weight[i][j] = {}
+			self.m_w[i][j] = {}
+			self.v_w[i][j] = {}
+			for k=1,nin do
+				self.weight[i][j][k] = (mrandom()-0.5)*scale
+				self.m_w[i][j][k] = 0
+				self.v_w[i][j][k] = 0
+			end
+			self.bias[i][j] = 0
+			self.gamma[i][j] = 1
+			self.beta[i][j] = 0
+			self.mean[i][j] = 0
+			self.std[i][j] = 1
+			self.m_b[i][j] = 0
+			self.v_b[i][j] = 0
+			self.m_gamma[i][j] = 0
+			self.v_gamma[i][j] = 0
+			self.m_beta[i][j] = 0
+			self.v_beta[i][j] = 0
+		end
+	end
+	return self
+end
 
-function nn.sigmoid(x)
-	return 1/(1+mexp(-x))
-end
-function nn.relu(x)
-	return x>0 and x or 0
-end
-function nn.linear(x)
-	return x
-end
-function nn.swish(x)
-	return x/(1+mexp(-x))
-end
-nn.tanh = math.tanh or function(x)
-	return (2/(1+mexp(-2*x)))-1
-end
-function nn.hardsigmoid(x)
-	if x < 0 then return 0 end
-	if x > 1 then return 1 end
-	return x
-end
-function nn.hardtanh(x)
-	if x < -1 then return -1 end
-	if x > 1 then return 1 end
-	return x
-end
-
-local function neuronnew(activ,weight,bias,mask)
-	bias = bias or 0
-	if type(weight)=="number" then
-		local newweight = {}
-		local scale = msqrt(4/weight)
-		for i=1,weight do 
-			if (mask and mask[1][i]) == 0 then 
-				tinsert(newweight,0)
-			else
-				tinsert(newweight,(mrandom() - 0.5) * scale)
+function nn.forward(self,x)
+	local outp = {x}
+	local sums = {}
+	local norm = {}
+	for i=1,self.nlayers do
+		local inp = outp[i]
+		local nin = self.sizes[i]
+		local nout = self.sizes[i+1]
+		local lsum = {}
+		local lnorm = {}
+		local lout = {}
+		for j=1,nout do
+			local sum = self.bias[i][j]
+			for k=1,nin do
+				sum = sum + inp[k] * self.weight[i][j][k]
+			end
+			lsum[j] = sum
+		end
+		if nout > 1 then
+			for j=1,nout do
+				lnorm[j] = self.gamma[i][j] * ((lsum[j] - self.mean[i][j]) / self.std[i][j]) + self.beta[i][j]
+				lout[j] = self.activ[i](lnorm[j])
+			end
+		else
+			for j=1,nout do
+				lnorm[j] = lsum[j]
+				lout[j] = self.activ[i](lnorm[j])
 			end
 		end
-		weight = newweight
-	else 
-		local scale = msqrt(4/#weight)
-		local scale2 = scale*0.5
-		for k,v in next,weight do 
-			if v==true then 
-				weight[k] = mrandom() * scale2
-			elseif v==false then 
-				weight[k] = -mrandom() * scale2
-			elseif v=="" then 
-				weight[k] = (mrandom() - 0.5) * scale
+		tinsert(outp, lout)
+		tinsert(sums, lsum)
+		tinsert(norm, lnorm)
+	end
+	return outp, sums, norm
+end
+
+function nn.backward(self, outp, sums, norm, target, lossderiv)
+	local grad = {
+		weight = {},
+		bias = {},
+		gamma = {},
+		beta = {}
+	}
+	local delta = lossderiv(outp[self.nlayers+1], target)
+	for i=self.nlayers,1,-1 do
+		grad.weight[i] = {}
+		grad.bias[i] = {}
+		grad.gamma[i] = {}
+		grad.beta[i] = {}
+		local inp = outp[i]
+		local nin = self.sizes[i]
+		local nout = self.sizes[i+1]
+		if nout > 1 then
+			for j=1,nout do
+				local activation_deriv = nn.deriv(self.activ[i], norm[i][j])
+				local dj = delta[j] * activation_deriv
+				local normalized = (sums[i][j] - self.mean[i][j]) / self.std[i][j]
+				grad.gamma[i][j] = dj * normalized
+				grad.beta[i][j] = dj
+				delta[j] = dj * self.gamma[i][j] / self.std[i][j]
+			end
+		end
+		for j=1,nout do
+			grad.weight[i][j] = {}
+			local dj = delta[j]
+			for k=1,nin do
+				grad.weight[i][j][k] = dj * inp[k]
+			end
+			grad.bias[i][j] = dj
+		end
+		if i > 1 then
+			local ndelta = {}
+			for k=1,nin do
+				ndelta[k] = 0
+				for j=1,nout do
+					ndelta[k] = ndelta[k] + delta[j] * self.weight[i][j][k]
+				end
+			end
+			delta = ndelta
+		end
+	end
+	return grad
+end
+
+function nn.update(self, grad, lr, momentum, lambda, beta1, beta2)
+	momentum = momentum or 0.9
+	lr = lr or 0.001
+	lambda = lambda or 0
+	beta1 = beta1 or 0.9
+	beta2 = beta2 or 0.999
+	local eps = 1e-8
+	self.t = self.t + 1
+	local t = self.t
+	local beta1_t = beta1^t
+	local beta2_t = beta2^t
+	for i=1,self.nlayers do
+		local nout = self.sizes[i+1]
+		for j=1,nout do
+			local lr = lr * msqrt(#grad.weight[i][j])
+			if grad.bias[i] and grad.bias[i][j] then
+				local grad_b = grad.bias[i][j]
+				self.m_b[i][j] = beta1 * self.m_b[i][j] + (1 - beta1) * grad_b
+				self.v_b[i][j] = beta2 * self.v_b[i][j] + (1 - beta2) * grad_b * grad_b
+				local m_hat_b = self.m_b[i][j] / (1 - beta1_t)
+				local v_hat_b = self.v_b[i][j] / (1 - beta2_t)
+				self.bias[i][j] = self.bias[i][j] - lr * m_hat_b / (msqrt(v_hat_b) + eps)
+			end
+			if grad.gamma[i] and grad.gamma[i][j] then
+				local grad_g = grad.gamma[i][j]
+				self.m_gamma[i][j] = beta1 * self.m_gamma[i][j] + (1 - beta1) * grad_g
+				self.v_gamma[i][j] = beta2 * self.v_gamma[i][j] + (1 - beta2) * grad_g * grad_g
+				local m_hat_g = self.m_gamma[i][j] / (1 - beta1_t)
+				local v_hat_g = self.v_gamma[i][j] / (1 - beta2_t)
+				self.gamma[i][j] = self.gamma[i][j] - lr * m_hat_g / (msqrt(v_hat_g) + eps)
+			end
+			if grad.beta[i] and grad.beta[i][j] then
+				local grad_beta = grad.beta[i][j]
+				self.m_beta[i][j] = beta1 * self.m_beta[i][j] + (1 - beta1) * grad_beta
+				self.v_beta[i][j] = beta2 * self.v_beta[i][j] + (1 - beta2) * grad_beta * grad_beta
+				local m_hat_beta = self.m_beta[i][j] / (1 - beta1_t)
+				local v_hat_beta = self.v_beta[i][j] / (1 - beta2_t)
+				self.beta[i][j] = self.beta[i][j] - lr * m_hat_beta / (msqrt(v_hat_beta) + eps)
+			end
+			for k=1,self.sizes[i] do
+				if grad.weight[i] and grad.weight[i][j] and grad.weight[i][j][k] then
+					local grad_w = grad.weight[i][j][k] + lambda * self.weight[i][j][k]
+					self.m_w[i][j][k] = beta1 * self.m_w[i][j][k] + (1 - beta1) * grad_w
+					self.v_w[i][j][k] = beta2 * self.v_w[i][j][k] + (1 - beta2) * grad_w * grad_w
+					local m_hat_w = self.m_w[i][j][k] / (1 - beta1_t)
+					local v_hat_w = self.v_w[i][j][k] / (1 - beta2_t)
+					self.weight[i][j][k] = self.weight[i][j][k] - lr * m_hat_w / (msqrt(v_hat_w) + eps)
+				end
+			end
+		end
+		if nout > 1 then
+			for j=1,nout do
+				self.mean[i][j] = momentum * self.mean[i][j] + (1 - momentum) * self.bias[i][j]
+				local wnorm = 0
+				for k=1,self.sizes[i] do
+					wnorm = wnorm + self.weight[i][j][k]^2
+				end
+				wnorm = msqrt(wnorm / self.sizes[i])
+				self.std[i][j] = momentum * self.std[i][j] + (1 - momentum) * wnorm
 			end
 		end
 	end
-	local obj = {}
-	obj.activ = activ
-	obj.weight = weight
-	obj.adapt = msqrt(#weight)
-	obj.adaptdiv = 1/obj.adapt
-	obj.lasterror = 0
-	obj.bias = bias
-	obj.mask = mask
-	obj.m_w = {}
-	obj.v_w = {} 
-	obj.m_b = 0
-	obj.v_b = 0
-	obj.t = 0
-	obj.mean = 0
-	obj.std = 1
-	obj.count = 0
-	obj.gamma = 1
-	obj.beta = 0
-	obj.m_gamma = 0
-	obj.v_gamma = 0
-	obj.m_beta = 0
-	obj.v_beta = 0
-	for i=1,#weight do
-		obj.m_w[i] = 0
-		obj.v_w[i] = 0
-	end
-	setmetatable(obj,neuron)
-	return obj
-end
-neuron.new = neuronnew
-
-function neuron.forward(self,input,epsilon)
-	assert(#input == #self.weight,"invalid input size")
-	local sum = self.bias
-	for i,inp in next,input do
-		sum = sum + inp*self.weight[i]
-	end
-	local normalized = (sum - self.mean) / (self.std + (epsilon or 1e-8) * (mabs(sum)+1e-12))
-	local scaled = self.gamma * normalized + self.beta
-	return self.activ(scaled), scaled
 end
 
-local function nnderiv(f,x)
+function nn.deriv(f,x)
 	local e = mabs(x) * 1e-8 + 1e-12
-	local a = f(x+e)
-	local b = f(x-e)
-	return (a-b)/(2*e)
-end
-nn.deriv = nnderiv
-
-function neuron.backward(self,output,sum,target,epsilon)
-	return (target - output) * nnderiv(self.activ, sum) * self.gamma / (self.std + (epsilon or 1e-8) * (mabs(self.std)+1e-12))
+	return (f(x+e)-f(x-e))/(2*e)
 end
 
-function neuron.update(self,input,error,sum,lr,momentum,lambda,beta1,beta2,timestep,epsilon)
-	local adapt = self.adapt
-	local adaptdiv = self.adaptdiv
-	lr = (lr or 0.001) * adapt + (momentum or 0.004)*msqrt(mabs(self.lasterror - error))
-	lambda = (lambda or 0.01) * adaptdiv
-	beta1 = (beta1 or 0.9); beta1 = beta1 - beta1 * 0.111111111111111111 * adaptdiv
-	beta2 = (beta2 or 0.999); beta2 = beta2 - beta2 * 0.001001001001001001 * adaptdiv
-	self.lasterror = error
-	local eps = epsilon or 1e-8
-	if not timestep then
-		local _temp = self.t + 1
-		self.t = _temp
-		timestep = _temp
-	end
-	local mask = self.mask
-	local decay = 1 - lr * lambda
-	if decay < 1e-12 then decay = 1e-12 end 
-	if self.count > 0 then
-		self.count = self.count + 1
-		local alpha = 1 / self.count
-		self.mean = (1 - alpha) * self.mean + alpha * sum
-		local diff = sum - self.mean
-		self.std = msqrt((1 - alpha) * (self.std * self.std) + alpha * (diff * diff))
-	else
-		self.mean = sum
-		self.std = 1
-		self.count = 1
-	end
-	local OneMinBeta1 = 1-beta1
-	local OneMinBeta2 = 1-beta2
-	local Beta1Powered = 1/(1 - beta1^timestep)
-	local Beta2Powered = 1/(1 - beta2^timestep)
-	local normalized = (sum - self.mean) / (self.std + eps * (mabs(error)+1e-12))
-	local norm_grad_gamma = error * normalized
-	local norm_grad_beta = error
-	self.m_gamma = beta1 * self.m_gamma + OneMinBeta1 * norm_grad_gamma
-	self.v_gamma = beta2 * self.v_gamma + OneMinBeta2 * norm_grad_gamma * norm_grad_gamma
-	local m_hat_gamma = self.m_gamma * Beta1Powered
-	local v_hat_gamma = self.v_gamma * Beta2Powered
-	self.gamma = self.gamma + lr * m_hat_gamma / (msqrt(v_hat_gamma) + eps * (mabs(self.gamma)+1e-12))
-	self.m_beta = beta1 * self.m_beta + OneMinBeta1 * norm_grad_beta
-	self.v_beta = beta2 * self.v_beta + OneMinBeta2 * norm_grad_beta * norm_grad_beta
-	local m_hat_beta = self.m_beta * Beta1Powered
-	local v_hat_beta = self.v_beta * Beta2Powered
-	self.beta = self.beta + lr * m_hat_beta / (msqrt(v_hat_beta) + eps * (mabs(self.beta)+1e-12))
-	for i,inp in next,input do
-		local grad = error * inp * (mask and mask[1][i] or 1)
-		self.m_w[i] = beta1 * self.m_w[i] + OneMinBeta1 * grad
-		self.v_w[i] = beta2 * self.v_w[i] + OneMinBeta2 * grad * grad
-		local m_hat = self.m_w[i] * Beta1Powered
-		local v_hat = self.v_w[i] * Beta2Powered
-		self.weight[i] = self.weight[i] * decay + lr * m_hat / (msqrt(v_hat) + eps * (mabs(self.weight[i])+1e-12))
-	end
-	local grad = error * (mask and mask[2] or 1)
-	self.m_b = beta1 * self.m_b + OneMinBeta1 * grad
-	self.v_b = beta2 * self.v_b + OneMinBeta2 * grad * grad
-	local m_hat = self.m_b * Beta1Powered
-	local v_hat = self.v_b * Beta2Powered
-	self.bias = self.bias * decay + lr * m_hat / (msqrt(v_hat) + eps * (mabs(self.bias)+1e-12))
-end
-
-function nn.new(layers)
-	setmetatable(layers,nn)
-	return layers
-end
-
-function nn.layer(activ,w,c)
-	local t = {}
-	for i=1,c do
-		tinsert(t,neuronnew(activ,w))
-	end
-	return t
-end
-
-function nn.forward(layers,input)
-	local outputs,sums = {input},{}
-	for i,layer in next,layers do
-		local layer_output = {}
-		local layer_sums = {}
-		for j, neuron in next,layer do
-			local output, sum = neuron:forward(outputs[i])
-			tinsert(layer_output, output)
-			tinsert(layer_sums, sum)
-		end
-		tinsert(outputs, layer_output)
-		tinsert(sums, layer_sums)
-	end
-	return outputs, sums
-end
-
-function nn.backward(layers,lout,lsum,target,epsilon)
-	local input = lout[1]
-	local errors,sums = {},{}
-	local current_errors,current_sums = {},{}
-	local output_layer = layers[#layers]
-	local outidx,sumidx = #lout,#lsum
-	for j, neuron in next,output_layer do
-		local output = lout[outidx][j]
-		local sum = lsum[sumidx][j]
-		tinsert(current_errors,neuron:backward(output,sum,target[j] or target,epsilon))
-		tinsert(current_sums,sum)
-	end
-	errors[#layers] = current_errors
-	sums[#layers] = current_sums
-	for i = #layers - 1, 1, -1 do
-		current_errors = {}
-		current_sums = {}
-		local layer = layers[i]
-		local next_layer = layers[i + 1]
-		local layer_errors = errors[i + 1]
-		local layer_sums = lsum[i]
-		for j, neuron in next,layer do
-			local error_sum = 0
-			for k, next_neuron in next,next_layer do
-				error_sum = error_sum + layer_errors[k] * next_neuron.weight[j]
-			end
-			tinsert(current_errors, error_sum * nnderiv(neuron.activ,lsum[i][j]) * neuron.gamma / (neuron.std + (epsilon or 1e-8)))
-			tinsert(current_sums,layer_sums[j])
-		end
-		errors[i] = current_errors
-		sums[i] = current_sums
-	end
-	local changes = {}
-	for i, layer in next,layers do
-		local layer_input = lout[i]
-		for j, neuron in next,layer do
-			if not changes[neuron] then
-				changes[neuron] = {layer_input, errors[i][j], sums[i][j]}
-			end
-		end
-	end
-	return changes
-end
-
-function nn.update(changes,power,lambda,beta1,beta2,epsilon)
-	for neuron, update_data in pairs(changes) do
-		neuron:update(update_data[1],update_data[2],update_data[3],power,lambda,beta1,beta2,epsilon)
-	end
-end
+function nn.sigmoid(x) return 1/(1+mexp(-x)) end
+function nn.relu(x) return x>0 and x or 0 end
+function nn.linear(x) return x end
+function nn.swish(x) return x/(1+mexp(-x)) end
+nn.tanh = math.tanh or function(x) return (2/(1+mexp(-2*x)))-1 end
+function nn.hardsigmoid(x) return x<0 and 0 or x>1 and 1 or x end
+function nn.hardtanh(x) return x<-1 and -1 or x>1 and 1 or x end
 
 function nn.softmax(t)
 	local r,sum,max = {},0
@@ -296,28 +272,10 @@ function nn.argmax(t)
 	return idx,max
 end
 
-nn.loss = {}
-
-function nn.loss.mse(pred,trg)
-	local loss,len = 0,#pred
-	for i=1,len do
-		loss = loss + (pred[i]-trg[i])^2
-	end
-	return loss/len
-end
-
-function nn.loss.mae(pred,trg)
-	local loss,len = 0,#pred
-	for i=1,len do
-		loss = loss + mabs(pred[i]-trg[i])
-	end
-	return loss/len
-end
-
-function nn.loss.huber(pred,trg,delta)
+function nn.huber(pred,trg,delta) -- recommended for most cases
 	local loss,len,delta = 0,#pred,delta or 1
-	for i=1,len do
-		local diff = mabs(pred[i]-trg[i])
+	for k,v in next,pred do
+		local diff = mabs(v-trg[k])
 		if diff <= delta then
 			loss = loss + 0.5 * diff^2
 		else
@@ -327,29 +285,101 @@ function nn.loss.huber(pred,trg,delta)
 	return loss/len
 end
 
-function nn.loss.bce(pred,trg,eps)
+function nn.huberderiv(pred,trg,delta) -- recommended for most cases
+	local grad,len,delta = {},#pred,delta or 1
+	local div = 1/len
+	for k,v in next,pred do
+		local diff = v - trg[k]
+		if mabs(diff) <= delta then
+			grad[k] = diff * div
+		else
+			grad[k] = delta * (diff > 0 and 1 or -1) * div
+		end
+	end
+	return grad
+end
+
+function nn.mse(pred,trg)
+	local loss,len = 0,#pred
+	for k,v in next,pred do
+		loss = loss + (v-trg[k])^2
+	end
+	return loss/len
+end
+
+function nn.msederiv(pred,trg)
+	local grad,len = {},#pred
+	for k,v in next,pred do
+		grad[k] = 2 * (v-trg[k]) / len
+	end
+	return grad
+end
+
+function nn.mae(pred,trg)
+	local loss,len = 0,#pred
+	for k,v in next,pred do
+		loss = loss + mabs(v-trg[k])
+	end
+	return loss/len
+end
+
+function nn.maederiv(pred,trg)
+	local grad,len = {},#pred
+	local div = 1/len
+	for k,v in next,pred do
+		local diff = v - trg[k]
+		if diff > 0 then
+			grad[k] = div
+		elseif diff < 0 then
+			grad[k] = -div
+		else
+			grad[k] = 0
+		end
+	end
+	return grad
+end
+
+function nn.bce(pred,trg,eps)
 	local loss,len,eps = 0,#pred,eps or 1e-15
-	for i=1,len do
-		local p = mmax(mmin(pred[i],1-eps),eps)
-		loss = loss + trg[i] * mlog(p) + (1 - trg[i]) * mlog(1-p)
+	for k,v in next,pred do
+		local p = mmax(mmin(v,1-eps),eps)
+		loss = loss + trg[k] * mlog(p) + (1 - trg[k]) * mlog(1-p)
 	end
 	return -loss/len
 end
 
-function nn.loss.cce(pred,trg,eps)
+function nn.bcederiv(pred,trg)
+	local grad,len,eps = {},#pred
+	local div = 1/len
+	for k,v in next,pred do
+		local p = mmax(mmin(v, 1-1e-15),1e-15)
+		grad[k] = ((p - trg[k]) / (mmax(p,1e-12) * mmax(1-p,1e-12))) * div
+	end
+	return grad
+end
+
+function nn.cce(pred,trg,eps)
 	-- please make sure to apply softmax to `pred`!
 	local loss,len,eps = 0,#pred,eps or 1e-15
-	for i=1,len do
-		local p = mmax(pred[i],eps)
-		loss = loss + trg[i] * mlog(p)
+	for k,v in next,pred do
+		loss = loss + trg[k] * mlog(mmax(v,eps))
 	end
 	return -loss
 end
 
-function nn.loss.quantile(pred,trg,tau)
+function nn.ccederiv(pred, trg)
+	-- pred should be raw logits! if you cant get raw logits, use `nn.logit`
+	local grad,softmax = {},nn.softmax(pred)
+	for k,v in next,softmax do
+		grad[k] = v - trg[k]
+	end
+	return grad
+end
+
+function nn.quantile(pred,trg,tau)
 	local loss,len,tau = 0,#pred,tau or 0.5
-	for i=1,len do
-		local diff = trg[i] - pred[i]
+	for k,v in next,pred do
+		local diff = trg[k] - v
 		if diff >= 0 then
 			loss = loss + tau * diff
 		else
@@ -357,6 +387,22 @@ function nn.loss.quantile(pred,trg,tau)
 		end
 	end
 	return loss/len
+end
+
+function nn.quantilederiv(pred, trg, tau)
+	local grad,len,tau = {},#pred,tau or 0.5
+	local div = 1/len
+	for k,v in next,pred do
+		local diff = trg[k] - v
+		if diff > 0 then
+			grad[k] = -tau * div
+		elseif diff < 0 then
+			grad[k] = (1 - tau) * div
+		else
+			grad[k] = 0
+		end
+	end
+	return grad
 end
 
 return nn
