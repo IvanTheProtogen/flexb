@@ -130,12 +130,17 @@ function nn.backward(self, outp, sums, norm, target, lossderiv)
 		local nout = self.sizes[i+1]
 		if nout > 1 then
 			for j=1,nout do
-				local activation_deriv = nn.deriv(self.activ[i], norm[i][j])
-				local dj = delta[j] * activation_deriv
+				local deriv = nn.deriv(self.activ[i], norm[i][j])
+				local dj = delta[j] * deriv
 				local normalized = (sums[i][j] - self.mean[i][j]) / self.std[i][j]
 				grad.gamma[i][j] = dj * normalized
 				grad.beta[i][j] = dj
 				delta[j] = dj * self.gamma[i][j] / self.std[i][j]
+			end
+		else
+			for j=1,nout do
+				local deriv = nn.deriv(self.activ[i], norm[i][j])
+				delta[j] = delta[j] * deriv
 			end
 		end
 		for j=1,nout do
@@ -162,8 +167,8 @@ end
 
 function nn.update(self, grad, lr, momentum, lambda, beta1, beta2)
 	momentum = momentum or 0.9
-	lr = lr or 0.001
-	lambda = lambda or 0
+	lr = lr or 0.004
+	lambda = lambda or 0.001
 	beta1 = beta1 or 0.9
 	beta2 = beta2 or 0.999
 	local eps = 1e-8
@@ -183,21 +188,23 @@ function nn.update(self, grad, lr, momentum, lambda, beta1, beta2)
 				local v_hat_b = self.v_b[i][j] / (1 - beta2_t)
 				self.bias[i][j] = self.bias[i][j] - lr * m_hat_b / (msqrt(v_hat_b) + eps)
 			end
-			if grad.gamma[i] and grad.gamma[i][j] then
-				local grad_g = grad.gamma[i][j]
-				self.m_gamma[i][j] = beta1 * self.m_gamma[i][j] + (1 - beta1) * grad_g
-				self.v_gamma[i][j] = beta2 * self.v_gamma[i][j] + (1 - beta2) * grad_g * grad_g
-				local m_hat_g = self.m_gamma[i][j] / (1 - beta1_t)
-				local v_hat_g = self.v_gamma[i][j] / (1 - beta2_t)
-				self.gamma[i][j] = self.gamma[i][j] - lr * m_hat_g / (msqrt(v_hat_g) + eps)
-			end
-			if grad.beta[i] and grad.beta[i][j] then
-				local grad_beta = grad.beta[i][j]
-				self.m_beta[i][j] = beta1 * self.m_beta[i][j] + (1 - beta1) * grad_beta
-				self.v_beta[i][j] = beta2 * self.v_beta[i][j] + (1 - beta2) * grad_beta * grad_beta
-				local m_hat_beta = self.m_beta[i][j] / (1 - beta1_t)
-				local v_hat_beta = self.v_beta[i][j] / (1 - beta2_t)
-				self.beta[i][j] = self.beta[i][j] - lr * m_hat_beta / (msqrt(v_hat_beta) + eps)
+			if nout > 1 then
+				if grad.gamma[i] and grad.gamma[i][j] then
+					local grad_g = grad.gamma[i][j]
+					self.m_gamma[i][j] = beta1 * self.m_gamma[i][j] + (1 - beta1) * grad_g
+					self.v_gamma[i][j] = beta2 * self.v_gamma[i][j] + (1 - beta2) * grad_g * grad_g
+					local m_hat_g = self.m_gamma[i][j] / (1 - beta1_t)
+					local v_hat_g = self.v_gamma[i][j] / (1 - beta2_t)
+					self.gamma[i][j] = self.gamma[i][j] - lr * m_hat_g / (msqrt(v_hat_g) + eps)
+				end
+				if grad.beta[i] and grad.beta[i][j] then
+					local grad_beta = grad.beta[i][j]
+					self.m_beta[i][j] = beta1 * self.m_beta[i][j] + (1 - beta1) * grad_beta
+					self.v_beta[i][j] = beta2 * self.v_beta[i][j] + (1 - beta2) * grad_beta * grad_beta
+					local m_hat_beta = self.m_beta[i][j] / (1 - beta1_t)
+					local v_hat_beta = self.v_beta[i][j] / (1 - beta2_t)
+					self.beta[i][j] = self.beta[i][j] - lr * m_hat_beta / (msqrt(v_hat_beta) + eps)
+				end
 			end
 			for k=1,self.sizes[i] do
 				if grad.weight[i] and grad.weight[i][j] and grad.weight[i][j][k] then
