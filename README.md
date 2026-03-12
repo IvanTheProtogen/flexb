@@ -13,43 +13,36 @@ For Roblox, right-click ReplicatedFirst in the Explorer tab, select Insert From 
 -- XOR example
 
 local nn = require("flexb")
+local mabs,msqrt,mlog = math.abs, math.sqrt, math.log
 
-local ai = nn.new({
-	{
-		nn.neuron.new(nn.linear,{true,false}),
-		nn.neuron.new(nn.relu,{false,true}),
-	},
-	{
-		nn.neuron.new(nn.linear,{true,true})
-	}
-})
+local ai = nn.new({2,2,1},{nn.swish,nn.linear})
 
 local ds = {
 	[{0,0}] = {0},
-	[{1,0}] = {1},
 	[{0,1}] = {1},
+	[{1,0}] = {1},
 	[{1,1}] = {0}
 }
 
 local clk = os.clock()
-for i=1,20000 do
+for i=1,1000 do
 	for k,v in next,ds do
-		local lout,lsum = ai:forward(k)
-		nn.update(ai:backward(lout,lsum,v),0.01)
+		local lout,lsum,lnorm,lxhat,lstd = ai:forward(k,false)
+		ai:backward(lout,lsum,lnorm,lxhat,lstd,v,nn.huberderiv,false,0.01)
+		print(nn.huber(lout[#lout],v))
 	end
-	print("Epochs left:",20001-i)
 end
 print("\nTime taken:",os.clock()-clk)
 
-local c1,c2 = 0,0
+local c = 0
 for k,v in next,ds do
-	local lout = ai:forward(k)
-	c1 = c1 + nn.loss.mse(lout[#lout],v)
+	local lout = ai:forward(k,false)
+	c = c + nn.huber(lout[#lout],v)
 end
 
-print("\nAI's total inaccuracy:",c1)
+print("\nAI's total inaccuracy:",c)
 
-print("\n#1.1.",ai[1][1].weight[1],ai[1][1].weight[2],ai[1][1].bias)
-print("#1.2.",ai[1][2].weight[1],ai[1][2].weight[2],ai[1][2].bias)
-print("#2.1.",ai[2][1].weight[1],ai[2][1].weight[2],ai[2][1].bias)
+print("\n#1.1.",ai.weight[1][1][1],ai.weight[1][1][2],ai.bias[1][1],ai.gamma[1][1],ai.beta[1][1])
+print("#1.2.",ai.weight[1][2][1],ai.weight[1][2][2],ai.bias[1][2],ai.gamma[1][2],ai.beta[1][2])
+print("#2.1.",ai.weight[2][1][1],ai.weight[2][1][2],ai.bias[2][1],ai.gamma[2][1],ai.beta[2][1])
 ```
