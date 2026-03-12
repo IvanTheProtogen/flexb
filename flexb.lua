@@ -155,8 +155,8 @@ function nn.backward(self, trin, target, lossderiv, lr, lambda, beta1, beta2, no
 			local istd = 1/std
 			for j=1,nout do
 				dnorm[j] = delta[j] * nn.deriv(self.activ[i],norm[i][j])
-				local grad_gamma = dnorm[j] * xhat[j] + lambda * self.gamma[i][j]
-				local grad_beta = dnorm[j] + lambda * self.beta[i][j]
+				local grad_gamma = dnorm[j] * xhat[j] + wlambda * self.gamma[i][j]
+				local grad_beta = dnorm[j] + wlambda * self.beta[i][j]
 				self.m_gamma[i][j] = beta1 * self.m_gamma[i][j] + (1 - beta1) * grad_gamma
 				self.v_gamma[i][j] = beta2 * self.v_gamma[i][j] + (1 - beta2) * grad_gamma * grad_gamma
 				local m_hat_g = self.m_gamma[i][j] / (1 - beta1_t)
@@ -166,7 +166,7 @@ function nn.backward(self, trin, target, lossderiv, lr, lambda, beta1, beta2, no
 				self.v_beta[i][j] = beta2 * self.v_beta[i][j] + (1 - beta2) * grad_beta * grad_beta
 				local m_hat_beta = self.m_beta[i][j] / (1 - beta1_t)
 				local v_hat_beta = self.v_beta[i][j] / (1 - beta2_t)
-				self.beta[i][j] = self.beta[i][j] - lr * m_hat_beta / (msqrt(v_hat_beta) + eps)
+				self.beta[i][j] = self.beta[i][j] - wlr * m_hat_beta / (msqrt(v_hat_beta) + eps)
 			end
 			local dxhat,sdxhat,sdxhatx = {},0,0
 			for j=1,nout do
@@ -187,12 +187,12 @@ function nn.backward(self, trin, target, lossderiv, lr, lambda, beta1, beta2, no
 		end
 		for j=1,nout do
 			local dj = delta[j]
-			local grad_b = dj + lambda * self.bias[i][j]
+			local grad_b = dj + wlambda * self.bias[i][j]
 			self.m_b[i][j] = beta1 * self.m_b[i][j] + (1 - beta1) * grad_b
 			self.v_b[i][j] = beta2 * self.v_b[i][j] + (1 - beta2) * grad_b * grad_b
 			local m_hat_b = self.m_b[i][j] / (1 - beta1_t)
 			local v_hat_b = self.v_b[i][j] / (1 - beta2_t)
-			self.bias[i][j] = self.bias[i][j] - lr * m_hat_b / (msqrt(v_hat_b) + eps)
+			self.bias[i][j] = self.bias[i][j] - wlr * m_hat_b / (msqrt(v_hat_b) + eps)
 			for k=1,nin do
 				local grad_w = dj * inp[k] + wlambda * self.weight[i][j][k]
 				self.m_w[i][j][k] = beta1 * self.m_w[i][j][k] + (1 - beta1) * grad_w
@@ -394,6 +394,29 @@ function nn.quantilederiv(pred, trg, tau)
 		end
 	end
 	return grad
+end
+
+local deepcopytable;function deepcopytable(src,dest)
+	for k,v in next,src do
+		if type(v) == "table" then
+			dest[k] = deepcopytable(v,{})
+		else
+			dest[k] = v
+		end
+	end
+	return dest
+end
+function nn.save(self)
+	local d = deepcopytable(self,{},true)
+	d.sizes = nil
+	d.nlayers = nil
+	d.activ = nil
+	return d
+end
+function nn.load(self,data)
+	for k,v in next,data do
+		self[k] = v
+	end
 end
 
 return nn
