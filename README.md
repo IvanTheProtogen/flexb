@@ -27,17 +27,17 @@ local ds = {
 local clk = os.clock()
 for i=1,1000 do
 	for k,v in next,ds do
-		local lout,lsum,lnorm,lxhat,lstd = ai:forward(k,false)
-		ai:backward(lout,lsum,lnorm,lxhat,lstd,v,nn.huberderiv,false,0.01)
-		print(nn.huber(lout[#lout],v))
+		local outp,trin = ai:forward(k)
+		ai:backward(trin,v,nn.huberderiv,0.01)
+		print(nn.huber(outp,v))
 	end
 end
 print("\nTime taken:",os.clock()-clk)
 
 local c = 0
 for k,v in next,ds do
-	local lout = ai:forward(k,false)
-	c = c + nn.huber(lout[#lout],v)
+	local outp = ai:forward(k)
+	c = c + nn.huber(outp,v)
 end
 
 print("\nAI's total inaccuracy:",c)
