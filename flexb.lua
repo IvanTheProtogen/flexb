@@ -69,7 +69,6 @@ function nn.new(sizes,activ)
 end
 
 function nn.forward(self,x,normalize)
-	local normalize = normalize or normalize==nil
 	local outp = {x}
 	local sums = {}
 	local norm = {}
@@ -122,11 +121,15 @@ function nn.forward(self,x,normalize)
 		tinsert(xhat,lxhat)
 		tinsert(stds,lstd)
 	end
-	return outp, sums, norm, xhat, stds
+	return outp[#outp], {outp, sums, norm, xhat, stds}
 end
 
-function nn.backward(self, outp, sums, norm, xhat, stds, target, lossderiv, normalize, lr, lambda, beta1, beta2)
-	normalize = normalize or normalize==nil
+function nn.backward(self, trin, target, lossderiv, lr, lambda, beta1, beta2, normalize)
+	local outp = trin[1]
+	local sums = trin[2]
+	local norm = trin[3]
+	local xhat = trin[4]
+	local stds = trin[5]
 	lr = lr or 0.004
 	lambda = lambda or 0.001
 	beta1 = beta1 or 0.9
