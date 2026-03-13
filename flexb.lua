@@ -68,12 +68,12 @@ function nn.new(sizes,activ)
 	return self
 end
 
-function nn.forward(self,x,normalize)
+function nn.forward(self,x)
 	local outp = {x}
 	local sums = {}
 	local norm = {}
 	local xhat = {}
-	local stds = {}
+	local rmss = {}
 	for i=1,self.nlayers do
 		local inp = outp[i]
 		local nin = self.sizes[i]
@@ -82,7 +82,7 @@ function nn.forward(self,x,normalize)
 		local lnorm = {}
 		local lout = {}
 		local lxhat = {}
-		local lstd = 0
+		local rms = 0
 		for j=1,nout do
 			local sum = self.bias[i][j]
 			for k=1,nin do
@@ -90,46 +90,32 @@ function nn.forward(self,x,normalize)
 			end
 			lsum[j] = sum
 		end
-		if nout > 1 and normalize then
-			local mean,div = 0,1/nout
-			for j=1,nout do
-				mean = mean + lsum[j]
-			end
-			mean = mean * div
-			for j=1,nout do
-				local diff = lsum[j] - mean
-				lstd = lstd + diff * diff
-			end
-			lstd = msqrt(lstd * div + 1e-5)
-			local istd = 1/lstd
-			for j=1,nout do
-				local xhat = (lsum[j] - mean) * istd
-				lxhat[j] = xhat
-				lnorm[j] = self.gamma[i][j] * ((lsum[j] - mean) * istd) + self.beta[i][j]
-				lout[j] = self.activ[i](lnorm[j])
-			end
-		else
-			for j=1,nout do
-				lnorm[j] = lsum[j]
-				lout[j] = self.activ[i](lsum[j])
-				lxhat[j] = lsum[j]
-			end
+		for j=1,nout do
+			rms = rms + lsum[j]*lsum[j]
+		end
+		rms = msqrt(rms / nout + 1e-5)
+		local irms = 1/rms
+		for j=1,nout do
+			local xhat = lsum[j] * irms
+			lxhat[j] = xhat
+			lnorm[j] = self.gamma[i][j] * xhat + self.beta[i][j]
+			lout[j] = self.activ[i](lnorm[j])
 		end
 		tinsert(outp, lout)
 		tinsert(sums, lsum)
 		tinsert(norm, lnorm)
 		tinsert(xhat,lxhat)
-		tinsert(stds,lstd)
+		tinsert(rmss,rms)
 	end
-	return outp[#outp], {outp, sums, norm, xhat, stds}
+	return outp[#outp], {outp, sums, norm, xhat, rmss}
 end
 
-function nn.backward(self, trin, grad, lr, lambda, beta1, beta2, normalize)
+function nn.backward(self, trin, grad, lr, lambda, beta1, beta2)
 	local outp = trin[1]
 	local sums = trin[2]
 	local norm = trin[3]
 	local xhat = trin[4]
-	local stds = trin[5]
+	local rmss = trin[5]
 	lr = lr or 0.004
 	lambda = lambda or 0.001
 	beta1 = beta1 or 0.9
@@ -151,48 +137,37 @@ function nn.backward(self, trin, grad, lr, lambda, beta1, beta2, normalize)
 		local sqrtnin = msqrt(nin)
 		local wlr = lr * sqrtnin
 		local wlambda = lambda / sqrtnin
-		if nout > 1 and normalize then
-			local xhat = xhat[i]
-			local std = stds[i]
-			local dnorm = {}
-			local istd = 1/std
-			for j=1,nout do
-				dnorm[j] = delta[j] * nn.deriv(self.activ[i],norm[i][j])
-				local grad_gamma = dnorm[j] * xhat[j]
-				local grad_beta = dnorm[j]
-				self.m_gamma[i][j] = beta1 * self.m_gamma[i][j] + (1 - beta1) * grad_gamma
-				self.v_gamma[i][j] = beta2 * self.v_gamma[i][j] + (1 - beta2) * grad_gamma * grad_gamma
-				local m_hat_g = self.m_gamma[i][j] / (1 - beta1_t)
-				local v_hat_g = self.v_gamma[i][j] / (1 - beta2_t)
-				self.gamma[i][j] = self.gamma[i][j] - wlr * m_hat_g / (msqrt(v_hat_g) + eps) - wlr * wlambda * self.gamma[i][j]
-				self.m_beta[i][j] = beta1 * self.m_beta[i][j] + (1 - beta1) * grad_beta
-				self.v_beta[i][j] = beta2 * self.v_beta[i][j] + (1 - beta2) * grad_beta * grad_beta
-				local m_hat_beta = self.m_beta[i][j] / (1 - beta1_t)
-				local v_hat_beta = self.v_beta[i][j] / (1 - beta2_t)
-				self.beta[i][j] = self.beta[i][j] - wlr * m_hat_beta / (msqrt(v_hat_beta) + eps) - wlr * wlambda * self.beta[i][j]
-			end
-			local dxhat,sdxhat,sdxhatx = {},0,0
-			for j=1,nout do
-				dxhat[j] = dnorm[j] * self.gamma[i][j]
-			end
-			for j=1,nout do
-				sdxhat = sdxhat + dxhat[j]
-				sdxhatx = sdxhatx + dxhat[j] * xhat[j]
-			end
-			for j=1,nout do
-				delta[j] = (dxhat[j] - sdxhat * ndiv - xhat[j] * (sdxhatx * ndiv)) * istd
-			end
-		else
-			for j=1,nout do
-				local deriv = nn.deriv(self.activ[i], norm[i][j])
-				delta[j] = delta[j] * deriv
-			end
+		local xhat = xhat[i]
+		local rms = rmss[i]
+		local dnorm = {}
+		local irms = 1/rms
+		for j=1,nout do
+			dnorm[j] = delta[j] * nn.deriv(self.activ[i],norm[i][j])
+			local grad_gamma = dnorm[j] * xhat[j]
+			local grad_beta = dnorm[j]
+			self.m_gamma[i][j] = beta1 * self.m_gamma[i][j] + (1 - beta1) * grad_gamma
+			self.v_gamma[i][j] = beta2 * self.v_gamma[i][j] + (1 - beta2) * grad_gamma * grad_gamma
+			local m_hat_g = self.m_gamma[i][j] / (1 - beta1_t)
+			local v_hat_g = self.v_gamma[i][j] / (1 - beta2_t)
+			self.gamma[i][j] = self.gamma[i][j] - wlr * m_hat_g / (msqrt(v_hat_g) + eps) - wlr * wlambda * self.gamma[i][j]
+			self.m_beta[i][j] = beta1 * self.m_beta[i][j] + (1 - beta1) * grad_beta
+			self.v_beta[i][j] = beta2 * self.v_beta[i][j] + (1 - beta2) * grad_beta * grad_beta
+			local m_hat_beta = self.m_beta[i][j] / (1 - beta1_t)
+			local v_hat_beta = self.v_beta[i][j] / (1 - beta2_t)
+			self.beta[i][j] = self.beta[i][j] - wlr * m_hat_beta / (msqrt(v_hat_beta) + eps) - wlr * wlambda * self.beta[i][j]
+		end
+		local sdnxhat = 0
+		for j=1,nout do
+			sdnxhat = sdnxhat + dnorm[j] * xhat[j]
+		end
+		local div = 1/nout
+		for j=1,nout do
+			delta[j] = (dnorm[j] * self.gamma[i][j] - xhat[j] * (sdnxhat * div)) * irms
 		end
 		for j=1,nout do
 			local dj = delta[j]
-			local grad_b = dj
-			self.m_b[i][j] = beta1 * self.m_b[i][j] + (1 - beta1) * grad_b
-			self.v_b[i][j] = beta2 * self.v_b[i][j] + (1 - beta2) * grad_b * grad_b
+			self.m_b[i][j] = beta1 * self.m_b[i][j] + (1 - beta1) * dj
+			self.v_b[i][j] = beta2 * self.v_b[i][j] + (1 - beta2) * dj * dj
 			local m_hat_b = self.m_b[i][j] / (1 - beta1_t)
 			local v_hat_b = self.v_b[i][j] / (1 - beta2_t)
 			self.bias[i][j] = self.bias[i][j] - wlr * m_hat_b / (msqrt(v_hat_b) + eps) - wlr * wlambda * self.bias[i][j]
