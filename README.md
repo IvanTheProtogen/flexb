@@ -13,7 +13,6 @@ For Roblox, right-click ReplicatedFirst in the Explorer tab, select Insert From 
 -- XOR example
 
 local nn = require("flexb")
-local mabs,msqrt,mlog = math.abs, math.sqrt, math.log
 
 local ai = nn.new({2,2,1},{nn.swish,nn.linear})
 
@@ -24,15 +23,21 @@ local ds = {
 	[{1,1}] = {0}
 }
 
-local clk = os.clock()
-for i=1,1000 do
+local clk,epoch = os.clock(),1
+while true do
+	local s = 0
 	for k,v in next,ds do
 		local outp,trin = ai:forward(k)
-		ai:backward(trin,nn.huberderiv(outp,v),0.01)
-		print(nn.huber(outp,v))
+		ai:backward(trin,nn.huberderiv(outp,v),0.02,0.001,0.9,0.999)
+		local loss = nn.huber(outp,v)
+		print(loss)
+		s = s + loss
 	end
+	if s < 1e-10 then break end
+	epoch = epoch + 1
 end
 print("\nTime taken:",os.clock()-clk)
+print("Epochs taken:",epoch)
 
 local c = 0
 for k,v in next,ds do
