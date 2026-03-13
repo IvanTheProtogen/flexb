@@ -28,7 +28,7 @@ local clk = os.clock()
 for i=1,1000 do
 	for k,v in next,ds do
 		local outp,trin = ai:forward(k)
-		ai:backward(trin,v,nn.huberderiv,0.01)
+		ai:backward(trin,nn.huberderiv(outp,v),0.01)
 		print(nn.huber(outp,v))
 	end
 end
@@ -40,7 +40,7 @@ for k,v in next,ds do
 	c = c + nn.huber(outp,v)
 end
 
-print("\nAI's total inaccuracy:",c)
+print("\nAI's total inaccuracy:",c) -- likely <1e-5
 
 print("\n#1.1.",ai.weight[1][1][1],ai.weight[1][1][2],ai.bias[1][1],ai.gamma[1][1],ai.beta[1][1])
 print("#1.2.",ai.weight[1][2][1],ai.weight[1][2][2],ai.bias[1][2],ai.gamma[1][2],ai.beta[1][2])
