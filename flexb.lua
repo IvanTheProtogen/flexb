@@ -20,6 +20,7 @@ function nn.new(sizes,activ)
 	self.bias = {}
 	self.gamma = {}
 	self.beta = {}
+	self.drprnd = {}
 	self.m_w = {}
 	self.v_w = {}
 	self.m_b = {}
@@ -37,6 +38,7 @@ function nn.new(sizes,activ)
 		self.bias[i] = {}
 		self.gamma[i] = {}
 		self.beta[i] = {}
+		self.drprnd[i] = {}
 		self.m_w[i] = {}
 		self.v_w[i] = {}
 		self.m_b[i] = {}
@@ -57,6 +59,7 @@ function nn.new(sizes,activ)
 			self.bias[i][j] = 0
 			self.gamma[i][j] = 1
 			self.beta[i][j] = 0
+			self.drprnd[i][j] = 0
 			self.m_b[i][j] = 0
 			self.v_b[i][j] = 0
 			self.m_gamma[i][j] = 0
@@ -65,6 +68,15 @@ function nn.new(sizes,activ)
 			self.v_beta[i][j] = 0
 		end
 	end
+	local minsiz = math.huge
+	for i=1,self.nlayers-1 do
+		minsiz = mmin(minsiz,sizes[i+1])
+	end
+	self.drpout = {}
+	for i=1,self.nlayers-1 do
+		self.drpout[i] = mmin(0.5,mmax(0,1 - minsiz / sizes[i+1]))
+	end
+	self.drpout[self.nlayers] = 0
 	return self
 end
 
@@ -101,13 +113,24 @@ function nn.forward(self,x)
 			lnorm[j] = self.gamma[i][j] * xhat + self.beta[i][j]
 			lout[j] = self.activ[i](lnorm[j])
 		end
+		if self.drpout[i] > 0 then
+			local p = self.drpout[i]
+			local scale = 1/(1-p)
+			for j=1,nout do
+				if self.drprnd[i][j] > p then
+					lout[j] = lout[j] * scale
+				else
+					lout[j] = 0
+				end
+			end
+		end
 		tinsert(outp, lout)
 		tinsert(sums, lsum)
 		tinsert(norm, lnorm)
 		tinsert(xhat,lxhat)
 		tinsert(rmss,rms)
 	end
-	return outp[#outp], {outp, sums, norm, xhat, rmss}
+	return outp[#outp], {outp, sums, norm, xhat, rmss, masks}
 end
 
 function nn.backward(self, trin, grad, lr, lambda, beta1, beta2)
@@ -116,6 +139,7 @@ function nn.backward(self, trin, grad, lr, lambda, beta1, beta2)
 	local norm = trin[3]
 	local xhat = trin[4]
 	local rmss = trin[5]
+	local masks = trin[6]
 	lr = lr or 0.004
 	lambda = lambda or 0.001
 	beta1 = beta1 or 0.9
@@ -141,8 +165,15 @@ function nn.backward(self, trin, grad, lr, lambda, beta1, beta2)
 		local rms = rmss[i]
 		local dnorm = {}
 		local irms = 1/rms
+		local p = self.drpout[i]
+		local scale = p>0 and (1/(1-p)) or 1
 		for j=1,nout do
-			dnorm[j] = delta[j] * nn.deriv(self.activ[i],norm[i][j])
+			self.drprnd[i][j] = mrandom()
+		end
+		-- CHECKPOINT
+		for j=1,nout do
+			local mask = self.drprnd[i][j] <= p and 0 or 1
+			dnorm[j] = delta[j] * nn.deriv(self.activ[i],norm[i][j]) * mask * scale
 			local grad_gamma = dnorm[j] * xhat[j]
 			local grad_beta = dnorm[j]
 			self.m_gamma[i][j] = beta1 * self.m_gamma[i][j] + (1 - beta1) * grad_gamma
