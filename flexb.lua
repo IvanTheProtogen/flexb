@@ -33,7 +33,7 @@ function nn.new(sizes,activ)
 	for i=1,self.nlayers do
 		local nin = sizes[i]
 		local nout = sizes[i+1]
-		local scale = msqrt(8/(nin+nout))
+		local scale = msqrt(4/(nin+nout))
 		self.weight[i] = {}
 		self.bias[i] = {}
 		self.gamma[i] = {}
@@ -167,11 +167,9 @@ function nn.backward(self, trin, grad, lr, lambda, beta1, beta2)
 		local irms = 1/rms
 		local p = self.drpout[i]
 		local scale = p>0 and (1/(1-p)) or 1
-		for j=1,nout do
-			self.drprnd[i][j] = mrandom()
-		end
 		-- CHECKPOINT
 		for j=1,nout do
+			self.drprnd[i][j] = mrandom()
 			local mask = self.drprnd[i][j] <= p and 0 or 1
 			dnorm[j] = delta[j] * nn.deriv(self.activ[i],norm[i][j]) * mask * scale
 			local grad_gamma = dnorm[j] * xhat[j]
