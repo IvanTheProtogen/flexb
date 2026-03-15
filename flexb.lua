@@ -145,7 +145,6 @@ function nn.backward(self, trin, grad, lr, lambda, beta1, beta2)
 	local norm = trin[3]
 	local xhat = trin[4]
 	local rmss = trin[5]
-	local masks = trin[6]
 	lr = lr or 0.004
 	lambda = lambda or 0.001
 	beta1 = beta1 or 0.9
