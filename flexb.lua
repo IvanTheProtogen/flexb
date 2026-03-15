@@ -424,9 +424,7 @@ function nn.save(self)
 	return d
 end
 function nn.load(self,data)
-	for k,v in next,data do
-		self[k] = v
-	end
+	return deepcopytable(data,self)
 end
 
 return nn
