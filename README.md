@@ -33,7 +33,7 @@ while true do
 		print(loss)
 		s = s + loss
 	end
-	if s < 1e-10 then break end
+	if s < 1e-8 then break end -- likely takes <1000 epochs to get there
 	epoch = epoch + 1
 end
 print("\nTime taken:",os.clock()-clk)
@@ -45,7 +45,7 @@ for k,v in next,ds do
 	c = c + nn.huber(outp,v)
 end
 
-print("\nAI's total inaccuracy:",c) -- likely <1e-5
+print("\nAI's total inaccuracy:",c)
 
 print("\n#1.1.",ai.weight[1][1][1],ai.weight[1][1][2],ai.bias[1][1],ai.gamma[1][1],ai.beta[1][1])
 print("#1.2.",ai.weight[1][2][1],ai.weight[1][2][2],ai.bias[1][2],ai.gamma[1][2],ai.beta[1][2])
