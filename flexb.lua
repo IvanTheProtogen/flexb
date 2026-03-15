@@ -33,7 +33,7 @@ function nn.new(sizes,activ)
 	for i=1,self.nlayers do
 		local nin = sizes[i]
 		local nout = sizes[i+1]
-		local scale = msqrt(4/(nin+nout))
+		local scale = msqrt(8/(nin+nout))
 		self.weight[i] = {}
 		self.bias[i] = {}
 		self.gamma[i] = {}
@@ -67,6 +67,12 @@ function nn.new(sizes,activ)
 			self.m_beta[i][j] = 0
 			self.v_beta[i][j] = 0
 		end
+	end
+	self.adapt = {}
+	self.iadapt = {}
+	for i=1,self.nlayers do
+		self.adapt[i] = msqrt(sizes[i])
+		self.iadapt[i] = 1/self.adapt[i]
 	end
 	local minsiz = math.huge
 	for i=1,self.nlayers-1 do
@@ -130,7 +136,7 @@ function nn.forward(self,x)
 		tinsert(xhat,lxhat)
 		tinsert(rmss,rms)
 	end
-	return outp[#outp], {outp, sums, norm, xhat, rmss, masks}
+	return outp[#outp], {outp, sums, norm, xhat, rmss}
 end
 
 function nn.backward(self, trin, grad, lr, lambda, beta1, beta2)
@@ -147,8 +153,8 @@ function nn.backward(self, trin, grad, lr, lambda, beta1, beta2)
 	local eps = 1e-8
 	self.t = self.t + 1
 	local t = self.t
-	local beta1_t = beta1^t
-	local beta2_t = beta2^t
+	local beta1_t = 1/(1-beta1^t)
+	local beta2_t = 1/(1-beta2^t)
 	local delta = {}
 	for k,v in next,grad do
 		delta[k] = v
@@ -158,16 +164,14 @@ function nn.backward(self, trin, grad, lr, lambda, beta1, beta2)
 		local nin = self.sizes[i]
 		local nout = self.sizes[i+1]
 		local ndiv = 1/nout
-		local sqrtnin = msqrt(nin)
-		local wlr = lr * sqrtnin
-		local wlambda = lambda / sqrtnin
+		local wlr = lr * self.adapt[i]
+		local wlambda = lambda * self.iadapt[i]
 		local xhat = xhat[i]
 		local rms = rmss[i]
 		local dnorm = {}
 		local irms = 1/rms
 		local p = self.drpout[i]
 		local scale = p>0 and (1/(1-p)) or 1
-		-- CHECKPOINT
 		for j=1,nout do
 			self.drprnd[i][j] = mrandom()
 			local mask = self.drprnd[i][j] <= p and 0 or 1
@@ -176,13 +180,13 @@ function nn.backward(self, trin, grad, lr, lambda, beta1, beta2)
 			local grad_beta = dnorm[j]
 			self.m_gamma[i][j] = beta1 * self.m_gamma[i][j] + (1 - beta1) * grad_gamma
 			self.v_gamma[i][j] = beta2 * self.v_gamma[i][j] + (1 - beta2) * grad_gamma * grad_gamma
-			local m_hat_g = self.m_gamma[i][j] / (1 - beta1_t)
-			local v_hat_g = self.v_gamma[i][j] / (1 - beta2_t)
+			local m_hat_g = self.m_gamma[i][j] * beta1_t
+			local v_hat_g = self.v_gamma[i][j] * beta2_t
 			self.gamma[i][j] = self.gamma[i][j] - wlr * m_hat_g / (msqrt(v_hat_g) + eps) - wlr * wlambda * self.gamma[i][j]
 			self.m_beta[i][j] = beta1 * self.m_beta[i][j] + (1 - beta1) * grad_beta
 			self.v_beta[i][j] = beta2 * self.v_beta[i][j] + (1 - beta2) * grad_beta * grad_beta
-			local m_hat_beta = self.m_beta[i][j] / (1 - beta1_t)
-			local v_hat_beta = self.v_beta[i][j] / (1 - beta2_t)
+			local m_hat_beta = self.m_beta[i][j] * beta1_t
+			local v_hat_beta = self.v_beta[i][j] * beta2_t
 			self.beta[i][j] = self.beta[i][j] - wlr * m_hat_beta / (msqrt(v_hat_beta) + eps) - wlr * wlambda * self.beta[i][j]
 		end
 		local sdnxhat = 0
@@ -197,15 +201,15 @@ function nn.backward(self, trin, grad, lr, lambda, beta1, beta2)
 			local dj = delta[j]
 			self.m_b[i][j] = beta1 * self.m_b[i][j] + (1 - beta1) * dj
 			self.v_b[i][j] = beta2 * self.v_b[i][j] + (1 - beta2) * dj * dj
-			local m_hat_b = self.m_b[i][j] / (1 - beta1_t)
-			local v_hat_b = self.v_b[i][j] / (1 - beta2_t)
+			local m_hat_b = self.m_b[i][j] * beta1_t
+			local v_hat_b = self.v_b[i][j] * beta2_t
 			self.bias[i][j] = self.bias[i][j] - wlr * m_hat_b / (msqrt(v_hat_b) + eps) - wlr * wlambda * self.bias[i][j]
 			for k=1,nin do
 				local grad_w = dj * inp[k]
 				self.m_w[i][j][k] = beta1 * self.m_w[i][j][k] + (1 - beta1) * grad_w
 				self.v_w[i][j][k] = beta2 * self.v_w[i][j][k] + (1 - beta2) * grad_w * grad_w
-				local m_hat_w = self.m_w[i][j][k] / (1 - beta1_t)
-				local v_hat_w = self.v_w[i][j][k] / (1 - beta2_t)
+				local m_hat_w = self.m_w[i][j][k] * beta1_t
+				local v_hat_w = self.v_w[i][j][k] * beta2_t
 				self.weight[i][j][k] = self.weight[i][j][k] - wlr * m_hat_w / (msqrt(v_hat_w) + eps) - wlr * wlambda * self.weight[i][j][k]
 			end
 		end
