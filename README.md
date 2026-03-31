@@ -33,7 +33,7 @@ while true do
 		print(loss)
 		s = s + loss
 	end
-	if s < 1e-8 then break end -- likely takes <1000 epochs to get there
+	if s < 1e-9 then break end -- likely takes <1000 epochs to get there
 	epoch = epoch + 1
 end
 print("\nTime taken:",os.clock()-clk)
