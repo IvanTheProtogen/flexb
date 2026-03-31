@@ -177,13 +177,13 @@ function nn.backward(self, trin, grad, lr, lambda, beta1, beta2)
 			dnorm[j] = delta[j] * nn.deriv(self.activ[i],norm[i][j]) * mask * scale
 			local grad_gamma = dnorm[j] * xhat[j]
 			local grad_beta = dnorm[j]
-			self.m_gamma[i][j] = beta1 * self.m_gamma[i][j] + (1 - beta1) * grad_gamma
-			self.v_gamma[i][j] = beta2 * self.v_gamma[i][j] + (1 - beta2) * grad_gamma * grad_gamma
+			self.m_gamma[i][j] = beta1 * self.m_gamma[i][j] + (1 - beta1) * grad_gamma - 1e-8 * self.m_gamma[i][j]
+			self.v_gamma[i][j] = beta2 * self.v_gamma[i][j] + (1 - beta2) * grad_gamma * grad_gamma - 1e-6 * self.v_gamma[i][j]
 			local m_hat_g = self.m_gamma[i][j] * beta1_t
 			local v_hat_g = self.v_gamma[i][j] * beta2_t
 			self.gamma[i][j] = self.gamma[i][j] - wlr * m_hat_g / (msqrt(v_hat_g) + eps) - wlr * wlambda * self.gamma[i][j]
-			self.m_beta[i][j] = beta1 * self.m_beta[i][j] + (1 - beta1) * grad_beta
-			self.v_beta[i][j] = beta2 * self.v_beta[i][j] + (1 - beta2) * grad_beta * grad_beta
+			self.m_beta[i][j] = beta1 * self.m_beta[i][j] + (1 - beta1) * grad_beta - 1e-8 * self.m_beta[i][j]
+			self.v_beta[i][j] = beta2 * self.v_beta[i][j] + (1 - beta2) * grad_beta * grad_beta - 1e-6 * self.v_beta[i][j]
 			local m_hat_beta = self.m_beta[i][j] * beta1_t
 			local v_hat_beta = self.v_beta[i][j] * beta2_t
 			self.beta[i][j] = self.beta[i][j] - wlr * m_hat_beta / (msqrt(v_hat_beta) + eps) - wlr * wlambda * self.beta[i][j]
@@ -198,15 +198,15 @@ function nn.backward(self, trin, grad, lr, lambda, beta1, beta2)
 		end
 		for j=1,nout do
 			local dj = delta[j]
-			self.m_b[i][j] = beta1 * self.m_b[i][j] + (1 - beta1) * dj
-			self.v_b[i][j] = beta2 * self.v_b[i][j] + (1 - beta2) * dj * dj
+			self.m_b[i][j] = beta1 * self.m_b[i][j] + (1 - beta1) * dj - 1e-8 * self.m_b[i][j]
+			self.v_b[i][j] = beta2 * self.v_b[i][j] + (1 - beta2) * dj * dj - 1e-6 * self.v_b[i][j]
 			local m_hat_b = self.m_b[i][j] * beta1_t
 			local v_hat_b = self.v_b[i][j] * beta2_t
 			self.bias[i][j] = self.bias[i][j] - wlr * m_hat_b / (msqrt(v_hat_b) + eps) - wlr * wlambda * self.bias[i][j]
 			for k=1,nin do
 				local grad_w = dj * inp[k]
-				self.m_w[i][j][k] = beta1 * self.m_w[i][j][k] + (1 - beta1) * grad_w
-				self.v_w[i][j][k] = beta2 * self.v_w[i][j][k] + (1 - beta2) * grad_w * grad_w
+				self.m_w[i][j][k] = beta1 * self.m_w[i][j][k] + (1 - beta1) * grad_w - 1e-8 * self.m_w[i][j][k]
+				self.v_w[i][j][k] = beta2 * self.v_w[i][j][k] + (1 - beta2) * grad_w * grad_w - 1e-6 * self.v_w[i][j][k]
 				local m_hat_w = self.m_w[i][j][k] * beta1_t
 				local v_hat_w = self.v_w[i][j][k] * beta2_t
 				self.weight[i][j][k] = self.weight[i][j][k] - wlr * m_hat_w / (msqrt(v_hat_w) + eps) - wlr * wlambda * self.weight[i][j][k]
