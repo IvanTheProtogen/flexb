@@ -163,8 +163,8 @@ function nn.backward(self, trin, grad, lr, lambda, beta1, beta2)
 		local nin = self.sizes[i]
 		local nout = self.sizes[i+1]
 		local ndiv = 1/nout
-		local wlr = lr * self.adapt[i]
 		local wlambda = lambda * self.iadapt[i]
+		local wlr = (lr * self.adapt[i]) / (1 + wlambda*(t-1))
 		local xhat = xhat[i]
 		local rms = rmss[i]
 		local dnorm = {}
